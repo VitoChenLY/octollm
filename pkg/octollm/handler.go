@@ -103,7 +103,7 @@ func httpHandler(engine Engine, format APIFormat, parser Parser) http.HandlerFun
 
 // ChatCompletionsHandler handles OpenAI /v1/chat/completions requests
 func ChatCompletionsHandler(engine Engine) http.HandlerFunc {
-	return httpHandler(engine, APIFormatChatCompletions, &JSONParser[openai.ChatCompletionNewParams]{})
+	return httpHandler(engine, APIFormatChatCompletions, &JSONParser[openai.ApiChatCompletionsRequest]{})
 }
 
 // LegacyCompletionsHandler handles OpenAI /v1/completions requests

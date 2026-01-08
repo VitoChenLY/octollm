@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/infinigence/octollm/pkg/octollm"
-	"github.com/openai/openai-go/v3"
+	"github.com/infinigence/octollm/pkg/types/openai"
 	"github.com/sirupsen/logrus"
 )
 
@@ -23,97 +23,66 @@ func (a *OpenAIAdapter) ExtractTextFromBody(ctx context.Context, body *octollm.U
 		return nil, fmt.Errorf("parse body error: %w", err)
 	}
 	switch parsed := parsed.(type) {
-	case *openai.ChatCompletionNewParams:
+	case *openai.ApiChatCompletionsRequest:
 		return a.extracTextFromRequest(ctx, parsed)
-	case *openai.ChatCompletion:
+	case *openai.ApiChatCompletionsResponse:
 		return a.extracTextFromResponse(ctx, parsed)
-	case *openai.ChatCompletionChunk:
-		return a.extracTextFromChunk(ctx, parsed)
 	default:
 		return nil, fmt.Errorf("unsupported body type: %T", parsed)
 	}
 }
 
-func (a *OpenAIAdapter) extracTextFromRequest(ctx context.Context, body *openai.ChatCompletionNewParams) ([]rune, error) {
+func (a *OpenAIAdapter) extracTextFromRequest(ctx context.Context, body *openai.ApiChatCompletionsRequest) ([]rune, error) {
 	r := []rune{}
 	for _, msg := range body.Messages {
-		r = append(r, a.combinedTextForChatCompletionsMessage(&msg)...)
+		r = append(r, a.extractTextFromMessage(msg)...)
 	}
 	return r, nil
 }
 
-func (a *OpenAIAdapter) extracTextFromResponse(ctx context.Context, body *openai.ChatCompletion) ([]rune, error) {
+func (a *OpenAIAdapter) extracTextFromResponse(ctx context.Context, body *openai.ApiChatCompletionsResponse) ([]rune, error) {
 	if len(body.Choices) != 1 {
 		return nil, fmt.Errorf("only support 1 choice, got %d", len(body.Choices))
 	}
-	msg := body.Choices[0].Message
-	r := []rune(msg.Content)
 
-	for _, toolCall := range msg.ToolCalls {
-		r = append(r, []rune(toolCall.Function.Arguments)...)
-	}
-
-	return r, nil
-}
-
-func (a *OpenAIAdapter) extracTextFromChunk(ctx context.Context, body *openai.ChatCompletionChunk) ([]rune, error) {
-	if len(body.Choices) != 1 {
-		return nil, fmt.Errorf("only support 1 choice, got %d", len(body.Choices))
-	}
-	msg := body.Choices[0].Delta
-
-	contentCount := 0
+	choice := body.Choices[0]
 	r := []rune{}
-	if len(msg.Content) > 0 {
-		contentCount++
-		r = append(r, []rune(msg.Content)...)
+
+	// 处理非流式响应（Message）
+	if choice.Message != nil {
+		r = append(r, a.extractTextFromMessage(choice.Message)...)
 	}
 
-	for _, toolCall := range msg.ToolCalls {
-		if len(toolCall.Function.Arguments) > 0 {
-			r = append(r, []rune(toolCall.Function.Arguments)...)
-			contentCount++
-		}
-	}
-
-	if contentCount > 1 {
-		return nil, fmt.Errorf("only support 1 content per chunk, got %d", contentCount)
+	// 处理流式响应（Delta）
+	if choice.Delta != nil {
+		r = append(r, a.extractTextFromMessage(choice.Delta)...)
 	}
 
 	return r, nil
 }
 
-func (a *OpenAIAdapter) combinedTextForChatCompletionsMessage(msg *openai.ChatCompletionMessageParamUnion) []rune {
-	switch v := msg.GetContent().AsAny().(type) {
-	case *string:
-		return []rune(*v)
-	case *[]openai.ChatCompletionContentPartTextParam:
-		r := []rune{}
-		for _, part := range *v {
-			r = append(r, []rune(part.Text)...)
-		}
-		return r
-	case *[]openai.ChatCompletionContentPartUnionParam:
-		r := []rune{}
-		for _, part := range *v {
-			t := part.GetText()
-			if t != nil {
-				r = append(r, []rune(*t)...)
-			}
-		}
-		return r
-	case *[]openai.ChatCompletionAssistantMessageParamContentArrayOfContentPartUnion:
-		r := []rune{}
-		for _, part := range *v {
-			t := part.GetText()
-			if t != nil {
-				r = append(r, []rune(*t)...)
-			}
-		}
-		return r
-	default:
-		return []rune{}
+// extractTextFromMessage 从 Message 中提取文本内容
+func (a *OpenAIAdapter) extractTextFromMessage(msg *openai.Message) []rune {
+	r := []rune{}
+
+	// 提取 Content
+	if msg.Content != nil {
+		r = append(r, []rune(msg.Content.ExtractText())...)
 	}
+
+	// 提取 ReasoningContent
+	if msg.ReasoningContent != nil {
+		r = append(r, []rune(msg.ReasoningContent.ExtractText())...)
+	}
+
+	// 提取 ToolCalls
+	for _, toolCall := range msg.ToolCalls {
+		if toolCall.Function != nil {
+			r = append(r, []rune(toolCall.Function.Arguments)...)
+		}
+	}
+
+	return r
 }
 
 func (a *OpenAIAdapter) GetReplacementBody(ctx context.Context, body *octollm.UnifiedBody) *octollm.UnifiedBody {
@@ -123,15 +92,8 @@ func (a *OpenAIAdapter) GetReplacementBody(ctx context.Context, body *octollm.Un
 		return nil
 	}
 	switch parsed := parsed.(type) {
-	case *openai.ChatCompletion:
+	case *openai.ApiChatCompletionsResponse:
 		r := a.getReplacementResponse(ctx, parsed)
-		if r == nil {
-			return nil
-		}
-		body.SetParsed(r)
-		return body
-	case *openai.ChatCompletionChunk:
-		r := a.getReplacementChunk(ctx, parsed)
 		if r == nil {
 			return nil
 		}
@@ -142,47 +104,50 @@ func (a *OpenAIAdapter) GetReplacementBody(ctx context.Context, body *octollm.Un
 	}
 }
 
-func (a *OpenAIAdapter) getReplacementResponse(ctx context.Context, resp *openai.ChatCompletion) *openai.ChatCompletion {
-	if a.ReplacementTextForNonStreaming == "" {
-		return nil
-	}
-	r := &openai.ChatCompletion{
-		ID:      resp.ID,
-		Object:  resp.Object,
-		Created: resp.Created,
-		Model:   resp.Model,
-		Choices: []openai.ChatCompletionChoice{
-			{
-				Index: resp.Choices[0].Index,
-				Message: openai.ChatCompletionMessage{
-					Content: a.ReplacementTextForNonStreaming,
+func (a *OpenAIAdapter) getReplacementResponse(ctx context.Context, resp *openai.ApiChatCompletionsResponse) *openai.ApiChatCompletionsResponse {
+	// 非流式和流式都使用相同的替换逻辑
+	if resp.Choices[0].Message != nil && a.ReplacementTextForNonStreaming != "" {
+		// 非流式响应
+		r := &openai.ApiChatCompletionsResponse{
+			Id:      resp.Id,
+			Object:  resp.Object,
+			Created: resp.Created,
+			Model:   resp.Model,
+			Choices: []*openai.Choice{
+				{
+					Index: resp.Choices[0].Index,
+					Message: &openai.Message{
+						Role:    "assistant",
+						Content: openai.MessageContentString(a.ReplacementTextForNonStreaming),
+					},
+					FinishReason: a.ReplacementFinishReason,
 				},
-				FinishReason: a.ReplacementFinishReason,
 			},
-		},
-		Usage: resp.Usage,
+			Usage: resp.Usage,
+		}
+		return r
 	}
-	return r
-}
 
-func (a *OpenAIAdapter) getReplacementChunk(ctx context.Context, chunk *openai.ChatCompletionChunk) *openai.ChatCompletionChunk {
-	if a.ReplacementTextForStreaming == "" {
-		return nil
-	}
-	r := &openai.ChatCompletionChunk{
-		ID:      chunk.ID,
-		Object:  chunk.Object,
-		Created: chunk.Created,
-		Model:   chunk.Model,
-		Choices: []openai.ChatCompletionChunkChoice{
-			{
-				Index: chunk.Choices[0].Index,
-				Delta: openai.ChatCompletionChunkChoiceDelta{
-					Content: a.ReplacementTextForStreaming,
+	if resp.Choices[0].Delta != nil && a.ReplacementTextForStreaming != "" {
+		// 流式响应
+		r := &openai.ApiChatCompletionsResponse{
+			Id:      resp.Id,
+			Object:  resp.Object,
+			Created: resp.Created,
+			Model:   resp.Model,
+			Choices: []*openai.Choice{
+				{
+					Index: resp.Choices[0].Index,
+					Delta: &openai.Message{
+						Role:    "assistant",
+						Content: openai.MessageContentString(a.ReplacementTextForStreaming),
+					},
+					FinishReason: a.ReplacementFinishReason,
 				},
-				FinishReason: a.ReplacementFinishReason,
 			},
-		},
+		}
+		return r
 	}
-	return r
+
+	return nil
 }

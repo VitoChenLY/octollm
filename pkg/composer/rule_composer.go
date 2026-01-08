@@ -269,8 +269,10 @@ func (r *RuleComposerEngine) Process(req *octollm.Request) (*octollm.Response, e
 			return nil, fmt.Errorf("failed to parse request body: %w", err)
 		}
 		switch body := body.(type) {
-		case *openai.ChatCompletionNewParams:
+		case *openai.ApiChatCompletionsRequest:
 			r.Model = body.Model
+		// case *openai.ChatCompletionNewParams:
+		// 	r.Model = body.Model
 		case *openaiSDK.ChatCompletionNewParams:
 			r.Model = body.Model
 		case *anthropic.MessageNewParams:
