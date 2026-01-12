@@ -110,5 +110,5 @@ func ChatCompletionsHandler(engine Engine) http.HandlerFunc {
 
 // MessagesHandler handles Anthropic /v1/messages requests
 func MessagesHandler(engine Engine) http.HandlerFunc {
-	return httpHandler(engine, APIFormatClaudeMessages, &JSONParser[anthropic.MessageNewParams]{})
+	return httpHandler(engine, APIFormatClaudeMessages, &JSONParser[anthropic.ApiMessagesRequest]{})
 }

@@ -170,13 +170,11 @@ type ExtraPart struct {
 }
 
 type MessageContent interface {
-	isMessageContent()
 	ExtractText() string
 }
 
 type MessageContentString string
 
-func (MessageContentString) isMessageContent()     {}
 func (m MessageContentString) ExtractText() string { return string(m) }
 func (m MessageContentString) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(m))
@@ -184,7 +182,6 @@ func (m MessageContentString) MarshalJSON() ([]byte, error) {
 
 type MessageContentArray []*MessageContentItem
 
-func (MessageContentArray) isMessageContent() {}
 func (m MessageContentArray) ExtractText() string {
 	text := ""
 	for _, item := range m {
