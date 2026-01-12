@@ -1,0 +1,699 @@
+package converter
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+
+	"github.com/sirupsen/logrus"
+
+	"github.com/infinigence/octollm/pkg/octollm"
+	"github.com/infinigence/octollm/pkg/types"
+	"github.com/infinigence/octollm/pkg/types/anthropic"
+	"github.com/infinigence/octollm/pkg/types/openai"
+)
+
+// ApiChatCompletionsToApiMessages is an engine that handles Anthropic Messages API requests with an underlying ChatCompletions engine.
+// It converts ApiMessagesRequest to ApiChatCompletionsRequest and converts back the response.
+type ApiChatCompletionsToApiMessages struct {
+	next octollm.Engine // the engine that can handle ChatCompletions requests
+}
+
+var _ octollm.Engine = (*ApiChatCompletionsToApiMessages)(nil)
+
+func NewApiChatCompletionsToApiMessages(next octollm.Engine) *ApiChatCompletionsToApiMessages {
+	return &ApiChatCompletionsToApiMessages{next: next}
+}
+
+func (e *ApiChatCompletionsToApiMessages) Process(req *octollm.Request) (*octollm.Response, error) {
+	logrus.WithContext(req.Context()).Infof("converting request body to ChatCompletions format from ApiMessages")
+	newBody, err := e.convertRequestBody(req.Context(), req.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert request body: %w", err)
+	}
+	req.Format = octollm.APIFormatChatCompletions
+	req.Body = newBody
+
+	// Call Next Engine
+	resp, err := e.next.Process(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert Response
+	if resp.Stream != nil {
+		newStream, err := e.convertStreamResponse(req.Context(), resp.Stream)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert stream response body: %w", err)
+		}
+		resp.Stream = newStream
+	} else {
+		nonStreamResp, err := e.convertNonStreamResponseBody(req.Context(), resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert non-stream response body: %w", err)
+		}
+		resp.Body = nonStreamResp
+	}
+
+	return resp, nil
+}
+
+func (e *ApiChatCompletionsToApiMessages) convertRequestBody(ctx context.Context, srcBody *octollm.UnifiedBody) (*octollm.UnifiedBody, error) {
+	// Parse Input as Anthropic Request
+	anthropicReq, err := srcBody.Parsed()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse request body: %w", err)
+	}
+
+	src, ok := anthropicReq.(*anthropic.ApiMessagesRequest)
+	if !ok {
+		return nil, fmt.Errorf("parsed body is not *anthropic.ApiMessagesRequest, got %T", anthropicReq)
+	}
+
+	dst := &openai.ApiChatCompletionsRequest{}
+
+	// Stream
+	if src.Stream != nil {
+		dst.Stream = *src.Stream
+	}
+
+	// Model
+	dst.Model = src.Model
+
+	// MaxTokens
+	if src.MaxTokens > 0 {
+		maxTokens := int(src.MaxTokens)
+		dst.MaxTokens = &maxTokens
+	}
+
+	// Temperature
+	if src.Temperature != nil {
+		dst.Temperature = src.Temperature
+	}
+
+	// TopP
+	if src.TopP != nil {
+		dst.TopP = src.TopP
+	}
+
+	// TopK
+	if src.TopK != nil {
+		topK := int(*src.TopK)
+		dst.TopK = &topK
+	}
+
+	// Stop Sequences
+	if len(src.StopSequences) > 0 {
+		dst.Stop = src.StopSequences
+	}
+
+	// Convert System Prompt to Messages
+	var messages []*openai.Message
+	if src.System != nil {
+		switch sys := src.System.(type) {
+		case anthropic.SystemString:
+			messages = append(messages, &openai.Message{
+				Role:    types.MessageParamRoleSystem,
+				Content: openai.MessageContentString(sys),
+			})
+		case anthropic.SystemBlocks:
+			for _, block := range sys {
+				messages = append(messages, &openai.Message{
+					Role:    types.MessageParamRoleSystem,
+					Content: openai.MessageContentString(block.Text),
+				})
+			}
+		}
+	}
+
+	// Convert Messages
+	for _, msg := range src.Messages {
+		role := msg.Role
+		if role == types.MessageParamRoleUser {
+			var contentParts []*openai.MessageContentItem
+			for _, block := range msg.Content {
+				contentBlock, ok := block.(*anthropic.MessageContentBlock)
+				if !ok {
+					// Handle MessageContentString case
+					if str, ok := block.(anthropic.MessageContentString); ok {
+						contentParts = append(contentParts, &openai.MessageContentItem{
+							Type: types.MessageContentTextType,
+							Text: string(str),
+						})
+					}
+					continue
+				}
+
+				switch contentBlock.Type {
+				case types.MessageContentTextType:
+					if contentBlock.Text != nil {
+						contentParts = append(contentParts, &openai.MessageContentItem{
+							Type: types.MessageContentTextType,
+							Text: *contentBlock.Text,
+						})
+					}
+				case types.MessageContentImageType:
+					if contentBlock.Source != nil {
+						url := ""
+						if contentBlock.Source.Type == "base64" && contentBlock.Source.Data != nil {
+							mediaType := "image/jpeg"
+							if contentBlock.Source.MediaType != "" {
+								mediaType = contentBlock.Source.MediaType
+							}
+							dataStr := fmt.Sprintf("%v", contentBlock.Source.Data)
+							url = fmt.Sprintf("data:%s;base64,%s", mediaType, dataStr)
+						} else if contentBlock.Source.Type == "url" {
+							url = contentBlock.Source.Url
+						}
+						contentParts = append(contentParts, &openai.MessageContentItem{
+							Type: "image_url",
+							ImageURL: &openai.MessageContentItemImageURL{
+								URL: url,
+							},
+						})
+					}
+				case types.MessageContentToolResultType:
+					// Tool result should be converted to tool message
+					if contentBlock.MessageContentToolResult != nil && contentBlock.ToolUseID != nil {
+						var resultText string
+						if len(contentBlock.MessageContentToolResult.Content) > 0 {
+							for _, c := range contentBlock.MessageContentToolResult.Content {
+								resultText += c.ExtractText()
+							}
+						}
+						messages = append(messages, &openai.Message{
+							Role:       types.MessageParamRoleTool,
+							Content:    openai.MessageContentString(resultText),
+							ToolCallID: *contentBlock.ToolUseID,
+						})
+					}
+				}
+			}
+
+			if len(contentParts) > 0 {
+				messages = append(messages, &openai.Message{
+					Role:    types.MessageParamRoleUser,
+					Content: openai.MessageContentArray(contentParts),
+				})
+			}
+
+		} else if role == types.MessageParamRoleAssistant {
+			var contentParts []*openai.MessageContentItem
+			var toolCalls []*openai.ToolCall
+			toolCallIndex := 0
+
+			for _, block := range msg.Content {
+				contentBlock, ok := block.(*anthropic.MessageContentBlock)
+				if !ok {
+					// Handle MessageContentString case
+					if str, ok := block.(anthropic.MessageContentString); ok {
+						contentParts = append(contentParts, &openai.MessageContentItem{
+							Type: types.MessageContentTextType,
+							Text: string(str),
+						})
+					}
+					continue
+				}
+
+				if contentBlock.Type == "text" && contentBlock.Text != nil {
+					contentParts = append(contentParts, &openai.MessageContentItem{
+						Type: types.MessageContentTextType,
+						Text: *contentBlock.Text,
+					})
+				} else if contentBlock.Type == "tool_use" && contentBlock.MessageContentToolUse != nil {
+					inputs, err := json.Marshal(contentBlock.MessageContentToolUse.Input)
+					if err != nil {
+						return nil, fmt.Errorf("failed to marshal tool use input: %w", err)
+					}
+					toolCalls = append(toolCalls, &openai.ToolCall{
+						ID:    contentBlock.MessageContentToolUse.ID,
+						Index: toolCallIndex,
+						Type:  "function",
+						Function: &openai.ToolCallFunction{
+							Name:      contentBlock.MessageContentToolUse.Name,
+							Arguments: string(inputs),
+						},
+					})
+					toolCallIndex++
+				}
+			}
+
+			assistantMsg := &openai.Message{
+				Role: types.MessageParamRoleAssistant,
+			}
+			if len(contentParts) > 0 {
+				assistantMsg.Content = openai.MessageContentArray(contentParts)
+			}
+			if len(toolCalls) > 0 {
+				assistantMsg.ToolCalls = toolCalls
+			}
+			messages = append(messages, assistantMsg)
+		}
+	}
+	dst.Messages = messages
+
+	// Convert Tools
+	for _, tool := range src.Tools {
+		if tool.Name == "" {
+			continue
+		}
+		var params json.RawMessage
+		if tool.InputSchema != nil {
+			if raw, ok := tool.InputSchema.(json.RawMessage); ok {
+				params = raw
+			} else {
+				// Try to marshal it
+				paramsBytes, err := json.Marshal(tool.InputSchema)
+				if err == nil {
+					params = paramsBytes
+				}
+			}
+		}
+		dst.Tools = append(dst.Tools, openai.Tool{
+			Type: "function",
+			Function: openai.ToolFunction{
+				Name:        &tool.Name,
+				Description: &tool.Description,
+				Parameters:  params,
+			},
+		})
+	}
+
+	// Convert ToolChoice
+	if src.ToolChoice != nil {
+		switch src.ToolChoice.Type {
+		case "auto":
+			auto := "auto"
+			dst.ToolChoice = &openai.ToolChoice{String: &auto}
+		case "any":
+			required := "required"
+			dst.ToolChoice = &openai.ToolChoice{String: &required}
+		case "tool":
+			if src.ToolChoice.Name != nil {
+				dst.ToolChoice = &openai.ToolChoice{
+					Object: &openai.ToolChoiceObject{
+						Type: "function",
+						Function: &openai.ToolChoiceFunction{
+							Name: *src.ToolChoice.Name,
+						},
+					},
+				}
+			}
+		}
+	}
+
+	// Convert to UnifiedBody
+	newBody := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ApiChatCompletionsRequest]{})
+	newBody.SetParsed(dst)
+
+	return newBody, nil
+}
+
+func (e *ApiChatCompletionsToApiMessages) convertNonStreamResponseBody(ctx context.Context, srcBody *octollm.UnifiedBody) (*octollm.UnifiedBody, error) {
+	// Parse Input as OpenAI Response
+	parsed, err := srcBody.Parsed()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse response body: %w", err)
+	}
+
+	openaiResp, ok := parsed.(*openai.ApiChatCompletionsResponse)
+	if !ok {
+		return nil, fmt.Errorf("parsed body is not *openai.ApiChatCompletionsResponse, got %T", parsed)
+	}
+
+	// Construct Claude Response
+	claudeResp := &anthropic.ApiMessagesResponse{
+		ID:    openaiResp.Id,
+		Type:  "message",
+		Role:  "assistant",
+		Model: openaiResp.Model,
+	}
+
+	// Usage
+	if openaiResp.Usage != nil {
+		claudeResp.Usage = &anthropic.Usage{
+			InputTokens:  int64(openaiResp.Usage.PromptTokens),
+			OutputTokens: int64(openaiResp.Usage.CompletionTokens),
+		}
+		// Handle cached tokens if available
+		if openaiResp.Usage.PromptTokensDetails != nil && openaiResp.Usage.PromptTokensDetails.CachedTokens > 0 {
+			cached := int64(openaiResp.Usage.PromptTokensDetails.CachedTokens)
+			claudeResp.Usage.CacheReadInputTokens = &cached
+		}
+	}
+
+	// Choices
+	if len(openaiResp.Choices) > 0 {
+		choice := openaiResp.Choices[0]
+		// Finish Reason
+		claudeResp.StopReason = e.mapFinishReason(choice.FinishReason)
+
+		msg := choice.Message
+		if msg != nil {
+			// Content
+			if msg.Content != nil {
+				text := msg.Content.ExtractText()
+				if text != "" {
+					claudeResp.Content = append(claudeResp.Content, &anthropic.MessageContentBlock{
+						Type: "text",
+						Text: &text,
+					})
+				}
+			}
+
+			// Tool Calls
+			for _, toolCall := range msg.ToolCalls {
+				if toolCall.Function == nil {
+					continue
+				}
+				claudeResp.Content = append(claudeResp.Content, &anthropic.MessageContentBlock{
+					Type: "tool_use",
+					MessageContentToolUse: &anthropic.MessageContentToolUse{
+						ID:    toolCall.ID,
+						Name:  toolCall.Function.Name,
+						Input: json.RawMessage(toolCall.Function.Arguments),
+					},
+				})
+			}
+		}
+	}
+
+	// Marshal Claude Response
+	claudeBytes, err := json.Marshal(claudeResp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal claude response: %w", err)
+	}
+
+	newBody := octollm.NewBodyFromBytes(claudeBytes, &octollm.JSONParser[anthropic.ApiMessagesResponse]{})
+
+	return newBody, nil
+}
+
+func (e *ApiChatCompletionsToApiMessages) convertStreamResponse(ctx context.Context, src *octollm.StreamChan) (*octollm.StreamChan, error) {
+	inCh := src.Chan()
+	outCh := make(chan *octollm.StreamChunk)
+
+	intPtr := func(i int) *int { return &i }
+
+	go func() {
+		defer close(outCh)
+		defer src.Close()
+
+		started := false
+		msgID := ""
+		model := ""
+		currentBlockIndex := -1 // Start at -1, will increment to 0 for first block
+
+		// Track current block state
+		type blockType int
+		const (
+			blockTypeNone blockType = iota
+			blockTypeText
+			blockTypeTool
+		)
+		currentBlockType := blockTypeNone
+		currentToolCallIndex := -1 // Track which OpenAI tool call index is in current block
+
+		var pendingFinishReason *string
+		var pendingUsage *openai.Usage
+
+		for chunk := range inCh {
+			if ctx.Err() != nil {
+				break
+			}
+
+			// Parse Chunk
+			parsed, err := chunk.Body.Parsed()
+			if err != nil {
+				if !errors.Is(err, octollm.ErrStreamDone) {
+					logrus.WithContext(ctx).Errorf("failed to parse stream chunk: %v", err)
+					continue
+				}
+
+				// [DONE]
+
+				// Send content_block_stop for current block if one exists
+				if currentBlockType != blockTypeNone {
+					blockStop := &anthropic.ApiMessagesStreamEvent{
+						Type:  "content_block_stop",
+						Index: intPtr(currentBlockIndex),
+					}
+					if err := e.sendEvent(outCh, blockStop); err != nil {
+						logrus.WithContext(ctx).Errorf("failed to send content_block_stop event: %v", err)
+						break
+					}
+					currentBlockType = blockTypeNone
+				}
+
+				// When we have both finish_reason and usage, send message_delta and message_stop
+				if pendingFinishReason != nil {
+					mappedFr := e.mapFinishReason(*pendingFinishReason)
+					msgDelta := &anthropic.ApiMessagesStreamEvent{
+						Type: "message_delta",
+					}
+					deltaData := &anthropic.ApiMessageDelta{
+						StopReason: &mappedFr,
+					}
+					deltaBytes, _ := json.Marshal(deltaData)
+					msgDelta.DeltaRaw = deltaBytes
+
+					if pendingUsage != nil {
+						msgDelta.Usage = &anthropic.Usage{
+							InputTokens:  int64(pendingUsage.PromptTokens),
+							OutputTokens: int64(pendingUsage.CompletionTokens),
+						}
+					}
+					if err := e.sendEvent(outCh, msgDelta); err != nil {
+						logrus.WithContext(ctx).Errorf("failed to send message_delta event: %v", err)
+						break
+					}
+					pendingFinishReason = nil
+				}
+
+				// Send message_stop
+				msgStop := &anthropic.ApiMessagesStreamEvent{
+					Type: "message_stop",
+				}
+				if err := e.sendEvent(outCh, msgStop); err != nil {
+					logrus.WithContext(ctx).Errorf("failed to send message_stop event: %v", err)
+				}
+				break
+			}
+
+			// Assert to *openai.ApiChatCompletionsResponse
+			openaiChunk, ok := parsed.(*openai.ApiChatCompletionsResponse)
+			if !ok {
+				logrus.WithContext(ctx).Errorf("parsed stream chunk is not *openai.ApiChatCompletionsResponse, got %T", parsed)
+				continue
+			}
+
+			if !started {
+				msgID = openaiChunk.Id
+				model = openaiChunk.Model
+				// Send message_start
+				msgStart := &anthropic.ApiMessagesStreamEvent{
+					Type: "message_start",
+					Message: &anthropic.ApiMessagesResponse{
+						ID:      msgID,
+						Type:    "message",
+						Role:    "assistant",
+						Model:   model,
+						Content: []anthropic.MessageContent{},
+						Usage:   &anthropic.Usage{InputTokens: 0, OutputTokens: 0}, // Placeholder
+					},
+				}
+				if err := e.sendEvent(outCh, msgStart); err != nil {
+					logrus.WithContext(ctx).Errorf("failed to send message_start event: %v", err)
+					continue
+				}
+				started = true
+			}
+
+			// Extract Delta
+			var deltaContent string
+			var toolCalls []*openai.ToolCall
+
+			if len(openaiChunk.Choices) > 0 {
+				choice := openaiChunk.Choices[0]
+				if choice.Delta != nil {
+					if choice.Delta.Content != nil {
+						deltaContent = choice.Delta.Content.ExtractText()
+					}
+					toolCalls = choice.Delta.ToolCalls
+				}
+				if choice.FinishReason != "" {
+					// record first finish reason
+					pendingFinishReason = &choice.FinishReason
+				}
+			}
+
+			// Check if this chunk has usage info
+			if openaiChunk.Usage != nil {
+				pendingUsage = openaiChunk.Usage
+			}
+
+			// Handle text content
+			if deltaContent != "" {
+				// Check if we need to start a new block
+				needNewBlock := false
+				switch currentBlockType {
+				case blockTypeNone:
+					needNewBlock = true
+				case blockTypeTool:
+					needNewBlock = true
+				}
+
+				if needNewBlock {
+					// Close previous block if exists
+					if currentBlockType != blockTypeNone {
+						blockStop := &anthropic.ApiMessagesStreamEvent{
+							Type:  "content_block_stop",
+							Index: intPtr(currentBlockIndex),
+						}
+						if err := e.sendEvent(outCh, blockStop); err != nil {
+							logrus.WithContext(ctx).Errorf("failed to send content_block_stop event: %v", err)
+							continue
+						}
+					}
+
+					// Create new text block
+					currentBlockIndex++
+
+					// Start text block
+					emptyText := ""
+					blockStart := &anthropic.ApiMessagesStreamEvent{
+						Type:  "content_block_start",
+						Index: intPtr(currentBlockIndex),
+						ContentBlock: &anthropic.MessageContentBlock{
+							Type: "text",
+							Text: &emptyText,
+						},
+					}
+					if err := e.sendEvent(outCh, blockStart); err != nil {
+						logrus.WithContext(ctx).Errorf("failed to send content_block_start for text event: %v", err)
+						continue
+					}
+					currentBlockType = blockTypeText
+				}
+
+				// Send text delta
+				deltaEvent := &anthropic.ApiMessagesStreamEvent{
+					Type:  "content_block_delta",
+					Index: intPtr(currentBlockIndex),
+				}
+				deltaData := &anthropic.ApiContentBlockDelta{
+					Type: "text_delta",
+					Text: &deltaContent,
+				}
+				deltaBytes, _ := json.Marshal(deltaData)
+				deltaEvent.DeltaRaw = deltaBytes
+
+				if err := e.sendEvent(outCh, deltaEvent); err != nil {
+					logrus.WithContext(ctx).Errorf("failed to send content_block_delta event: %v", err)
+					continue
+				}
+			}
+
+			// Handle tool calls
+			if len(toolCalls) > 0 {
+				for _, toolCall := range toolCalls {
+					// Check if we need to start a new block
+					needNewBlock := false
+					switch currentBlockType {
+					case blockTypeNone:
+						needNewBlock = true
+					case blockTypeText:
+						needNewBlock = true
+					case blockTypeTool:
+						if currentToolCallIndex != toolCall.Index {
+							needNewBlock = true
+						}
+					}
+
+					if needNewBlock {
+						// Close previous block if exists
+						if currentBlockType != blockTypeNone {
+							blockStop := &anthropic.ApiMessagesStreamEvent{
+								Type:  "content_block_stop",
+								Index: intPtr(currentBlockIndex),
+							}
+							if err := e.sendEvent(outCh, blockStop); err != nil {
+								logrus.WithContext(ctx).Errorf("failed to send content_block_stop event: %v", err)
+								continue
+							}
+						}
+
+						// Create new block for this tool call
+						currentBlockIndex++
+
+						// Start tool_use block
+						blockStart := &anthropic.ApiMessagesStreamEvent{
+							Type:  "content_block_start",
+							Index: intPtr(currentBlockIndex),
+							ContentBlock: &anthropic.MessageContentBlock{
+								Type: "tool_use",
+								MessageContentToolUse: &anthropic.MessageContentToolUse{
+									ID:    toolCall.ID,
+									Name:  toolCall.Function.Name,
+									Input: json.RawMessage("{}"),
+								},
+							},
+						}
+						if err := e.sendEvent(outCh, blockStart); err != nil {
+							logrus.WithContext(ctx).Errorf("failed to send content_block_start for tool_use event: %v", err)
+							continue
+						}
+						currentBlockType = blockTypeTool
+						currentToolCallIndex = toolCall.Index
+					}
+
+					// Send input_json_delta for tool call arguments
+					if toolCall.Function != nil && toolCall.Function.Arguments != "" {
+						deltaEvent := &anthropic.ApiMessagesStreamEvent{
+							Type:  "content_block_delta",
+							Index: intPtr(currentBlockIndex),
+						}
+						deltaData := &anthropic.ApiContentBlockDelta{
+							Type:        "input_json_delta",
+							PartialJSON: &toolCall.Function.Arguments,
+						}
+						deltaBytes, _ := json.Marshal(deltaData)
+						deltaEvent.DeltaRaw = deltaBytes
+
+						if err := e.sendEvent(outCh, deltaEvent); err != nil {
+							logrus.WithContext(ctx).Errorf("failed to send input_json_delta event: %v", err)
+							continue
+						}
+					}
+				}
+			}
+		}
+	}()
+
+	newStream := octollm.NewStreamChan(outCh, nil)
+	return newStream, nil
+}
+
+func (e *ApiChatCompletionsToApiMessages) sendEvent(ch chan<- *octollm.StreamChunk, event *anthropic.ApiMessagesStreamEvent) error {
+	bytes, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to marshal claude stream event: %w", err)
+	}
+	body := octollm.NewBodyFromBytes(bytes, &octollm.JSONParser[anthropic.ApiMessagesStreamEvent]{})
+	ch <- &octollm.StreamChunk{Body: body, Metadata: map[string]string{"event": event.Type}}
+	return nil
+}
+
+func (e *ApiChatCompletionsToApiMessages) mapFinishReason(fr string) string {
+	switch fr {
+	case "stop":
+		return "end_turn"
+	case "length":
+		return "max_tokens"
+	case "tool_calls":
+		return "tool_use"
+	default:
+		return fr // Fallback
+	}
+}

@@ -191,6 +191,8 @@ func (m *ModelRepoFileBased) BuildEngineByBackend(b *Backend) (octollm.Engine, e
 		var convEngine octollm.Engine
 		if b.ConvertToMessages == "from_chat" {
 			convEngine = converter.NewChatCompletionsToClaudeMessages(oriEngine)
+		} else if b.ConvertToMessages == "from_chat_api" {
+			convEngine = converter.NewApiChatCompletionsToApiMessages(oriEngine)
 		}
 		if convEngine != nil {
 			conv := func(req *octollm.Request) (*octollm.Response, error) {

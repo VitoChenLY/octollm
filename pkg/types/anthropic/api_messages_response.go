@@ -16,6 +16,35 @@ type ApiMessagesResponse struct {
 	Usage        *Usage           `json:"usage"`
 }
 
+// UnmarshalJSON implements custom JSON unmarshaling for ApiMessagesResponse
+func (r *ApiMessagesResponse) UnmarshalJSON(data []byte) error {
+	type Alias ApiMessagesResponse
+	aux := &struct {
+		Content json.RawMessage `json:"content"`
+		*Alias
+	}{
+		Alias: (*Alias)(r),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	// Parse Content field - it's always an array of content blocks
+	if len(aux.Content) > 0 {
+		var contentArray []*MessageContentBlock
+		if err := json.Unmarshal(aux.Content, &contentArray); err != nil {
+			return err
+		}
+		r.Content = make([]MessageContent, len(contentArray))
+		for i, block := range contentArray {
+			r.Content[i] = block
+		}
+	}
+
+	return nil
+}
+
 // Usage represents token usage information
 type Usage struct {
 	// Total input tokens
