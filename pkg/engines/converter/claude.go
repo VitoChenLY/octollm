@@ -478,7 +478,7 @@ func (e *ChatCompletionToClaudeMessages) convertStreamResponse(ctx context.Conte
 				break
 			}
 
-			openaiChunk, ok := parsed.(*openai.ChatCompletionResponse)
+			openaiChunk, ok := parsed.(*openai.ChatCompletionStreamChunk)
 			if !ok {
 				logrus.WithContext(ctx).Errorf("parsed stream chunk is not *openai.ChatCompletionStreamResponse, got %T", parsed)
 				continue

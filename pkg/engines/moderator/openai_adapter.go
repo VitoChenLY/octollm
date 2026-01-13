@@ -26,7 +26,9 @@ func (a *OpenAIAdapter) ExtractTextFromBody(ctx context.Context, body *octollm.U
 	case *openai.ChatCompletionRequest:
 		return a.extracTextFromRequest(ctx, parsed)
 	case *openai.ChatCompletionResponse:
-		return a.extracTextFromResponse(ctx, parsed)
+		return a.extractTextFromNonStreamResponse(ctx, parsed)
+	case *openai.ChatCompletionStreamChunk:
+		return a.extractTextFromStreamResponse(ctx, parsed)
 	default:
 		return nil, fmt.Errorf("unsupported body type: %T", parsed)
 	}
@@ -40,7 +42,7 @@ func (a *OpenAIAdapter) extracTextFromRequest(ctx context.Context, body *openai.
 	return r, nil
 }
 
-func (a *OpenAIAdapter) extracTextFromResponse(ctx context.Context, body *openai.ChatCompletionResponse) ([]rune, error) {
+func (a *OpenAIAdapter) extractTextFromNonStreamResponse(ctx context.Context, body *openai.ChatCompletionResponse) ([]rune, error) {
 	if len(body.Choices) != 1 {
 		return nil, fmt.Errorf("only support 1 choice, got %d", len(body.Choices))
 	}
@@ -52,6 +54,17 @@ func (a *OpenAIAdapter) extracTextFromResponse(ctx context.Context, body *openai
 	if choice.Message != nil {
 		r = append(r, a.extractTextFromMessage(choice.Message)...)
 	}
+
+	return r, nil
+}
+
+func (a *OpenAIAdapter) extractTextFromStreamResponse(ctx context.Context, body *openai.ChatCompletionStreamChunk) ([]rune, error) {
+	if len(body.Choices) != 1 {
+		return nil, fmt.Errorf("only support 1 choice, got %d", len(body.Choices))
+	}
+
+	choice := body.Choices[0]
+	r := []rune{}
 
 	// 处理流式响应（Delta）
 	if choice.Delta != nil {
@@ -93,7 +106,14 @@ func (a *OpenAIAdapter) GetReplacementBody(ctx context.Context, body *octollm.Un
 	}
 	switch parsed := parsed.(type) {
 	case *openai.ChatCompletionResponse:
-		r := a.getReplacementResponse(ctx, parsed)
+		r := a.getReplacementNonStreamResponse(ctx, parsed)
+		if r == nil {
+			return nil
+		}
+		body.SetParsed(r)
+		return body
+	case *openai.ChatCompletionStreamChunk:
+		r := a.getReplacementStreamResponse(ctx, parsed)
 		if r == nil {
 			return nil
 		}
@@ -104,7 +124,7 @@ func (a *OpenAIAdapter) GetReplacementBody(ctx context.Context, body *octollm.Un
 	}
 }
 
-func (a *OpenAIAdapter) getReplacementResponse(ctx context.Context, resp *openai.ChatCompletionResponse) *openai.ChatCompletionResponse {
+func (a *OpenAIAdapter) getReplacementNonStreamResponse(ctx context.Context, resp *openai.ChatCompletionResponse) *openai.ChatCompletionResponse {
 	// 非流式响应
 	if resp.Choices[0].Message != nil && a.ReplacementTextForNonStreaming != "" {
 		r := &openai.ChatCompletionResponse{
@@ -112,7 +132,7 @@ func (a *OpenAIAdapter) getReplacementResponse(ctx context.Context, resp *openai
 			Object:  resp.Object,
 			Created: resp.Created,
 			Model:   resp.Model,
-			Choices: []*openai.Choice{
+			Choices: []*openai.ChatCompletionChoice{
 				{
 					Index: resp.Choices[0].Index,
 					Message: &openai.Message{
@@ -127,13 +147,18 @@ func (a *OpenAIAdapter) getReplacementResponse(ctx context.Context, resp *openai
 		return r
 	}
 
+	return nil
+}
+
+func (a *OpenAIAdapter) getReplacementStreamResponse(ctx context.Context, resp *openai.ChatCompletionStreamChunk) *openai.ChatCompletionStreamChunk {
+	// 流式响应
 	if resp.Choices[0].Delta != nil && a.ReplacementTextForStreaming != "" {
-		r := &openai.ChatCompletionResponse{
+		r := &openai.ChatCompletionStreamChunk{
 			Id:      resp.Id,
 			Object:  resp.Object,
 			Created: resp.Created,
 			Model:   resp.Model,
-			Choices: []*openai.Choice{
+			Choices: []*openai.ChatCompletionStreamChoice{
 				{
 					Index: resp.Choices[0].Index,
 					Delta: &openai.Message{

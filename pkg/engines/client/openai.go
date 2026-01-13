@@ -34,7 +34,9 @@ func NewOpenAIChatCompletionsEndpoint(baseAddr, endpoint, apiKey string) *OpenAI
 		}).
 		WithParser(
 			func(req *octollm.Request) octollm.Parser { return &octollm.JSONParser[openai.ChatCompletionResponse]{} },
-			func(req *octollm.Request) octollm.Parser { return &octollm.JSONParser[openai.ChatCompletionResponse]{} },
+			func(req *octollm.Request) octollm.Parser {
+				return &octollm.JSONParser[openai.ChatCompletionStreamChunk]{}
+			},
 		)
 	return &OpenAIChatCompletionsEndpoint{
 		HTTPEndpoint: httpEndpoint,

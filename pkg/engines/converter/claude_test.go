@@ -177,7 +177,7 @@ func TestApiChatCompletionsToApiMessages_convertNonStreamResponseBody(t *testing
 		Id:     "msg_123",
 		Model:  "gpt-4",
 		Object: "chat.completion",
-		Choices: []*openai.Choice{
+		Choices: []*openai.ChatCompletionChoice{
 			{
 				Index:        0,
 				FinishReason: "stop",
@@ -233,7 +233,7 @@ func TestApiChatCompletionsToApiMessages_convertNonStreamResponseBody_WithToolCa
 		Id:     "msg_456",
 		Model:  "gpt-4",
 		Object: "chat.completion",
-		Choices: []*openai.Choice{
+		Choices: []*openai.ChatCompletionChoice{
 			{
 				Index:        0,
 				FinishReason: "tool_calls",

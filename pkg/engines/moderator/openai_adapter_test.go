@@ -139,7 +139,7 @@ func TestOpenAIAdapter_ExtractTextFromResponse_NonStreaming(t *testing.T) {
 		Object:  "chat.completion",
 		Created: 1234567890,
 		Model:   "gpt-4",
-		Choices: []*openai.Choice{
+		Choices: []*openai.ChatCompletionChoice{
 			{
 				Index: 0,
 				Message: &openai.Message{
@@ -168,12 +168,12 @@ func TestOpenAIAdapter_ExtractTextFromResponse_NonStreaming(t *testing.T) {
 func TestOpenAIAdapter_ExtractTextFromResponse_Streaming(t *testing.T) {
 	adapter := &OpenAIAdapter{}
 
-	resp := &openai.ChatCompletionResponse{
+	resp := &openai.ChatCompletionStreamChunk{
 		Id:      "chatcmpl-123",
 		Object:  "chat.completion.chunk",
 		Created: 1234567890,
 		Model:   "gpt-4",
-		Choices: []*openai.Choice{
+		Choices: []*openai.ChatCompletionStreamChoice{
 			{
 				Index: 0,
 				Delta: &openai.Message{
@@ -184,7 +184,7 @@ func TestOpenAIAdapter_ExtractTextFromResponse_Streaming(t *testing.T) {
 		},
 	}
 
-	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionResponse]{})
+	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionStreamChunk]{})
 	body.SetParsed(resp)
 
 	got, err := adapter.ExtractTextFromBody(context.Background(), body)
@@ -206,7 +206,7 @@ func TestOpenAIAdapter_ExtractTextFromResponse_WithToolCalls(t *testing.T) {
 		Object:  "chat.completion",
 		Created: 1234567890,
 		Model:   "gpt-4",
-		Choices: []*openai.Choice{
+		Choices: []*openai.ChatCompletionChoice{
 			{
 				Index: 0,
 				Message: &openai.Message{
@@ -253,7 +253,7 @@ func TestOpenAIAdapter_GetReplacementBody_NonStreaming(t *testing.T) {
 		Object:  "chat.completion",
 		Created: 1234567890,
 		Model:   "gpt-4",
-		Choices: []*openai.Choice{
+		Choices: []*openai.ChatCompletionChoice{
 			{
 				Index: 0,
 				Message: &openai.Message{
@@ -327,12 +327,12 @@ func TestOpenAIAdapter_GetReplacementBody_Streaming(t *testing.T) {
 		ReplacementFinishReason:     "content_filter",
 	}
 
-	originalResp := &openai.ChatCompletionResponse{
+	originalResp := &openai.ChatCompletionStreamChunk{
 		Id:      "chatcmpl-456",
 		Object:  "chat.completion.chunk",
 		Created: 1234567890,
 		Model:   "gpt-4",
-		Choices: []*openai.Choice{
+		Choices: []*openai.ChatCompletionStreamChoice{
 			{
 				Index: 0,
 				Delta: &openai.Message{
@@ -342,7 +342,7 @@ func TestOpenAIAdapter_GetReplacementBody_Streaming(t *testing.T) {
 		},
 	}
 
-	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionResponse]{})
+	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionStreamChunk]{})
 	body.SetParsed(originalResp)
 
 	replacementBody := adapter.GetReplacementBody(context.Background(), body)
@@ -355,7 +355,7 @@ func TestOpenAIAdapter_GetReplacementBody_Streaming(t *testing.T) {
 		t.Fatalf("Failed to parse replacement body: %v", err)
 	}
 
-	replacement := parsed.(*openai.ChatCompletionResponse)
+	replacement := parsed.(*openai.ChatCompletionStreamChunk)
 
 	// 验证替换内容
 	if len(replacement.Choices) != 1 {
@@ -385,7 +385,7 @@ func TestOpenAIAdapter_GetReplacementBody_NoReplacement(t *testing.T) {
 	originalResp := &openai.ChatCompletionResponse{
 		Id:    "chatcmpl-123",
 		Model: "gpt-4",
-		Choices: []*openai.Choice{
+		Choices: []*openai.ChatCompletionChoice{
 			{
 				Message: &openai.Message{
 					Content: openai.MessageContentString("Original content"),

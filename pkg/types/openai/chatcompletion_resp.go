@@ -1,23 +1,42 @@
 package openai
 
+// ChatCompletionResponse represents a non-streaming chat completion response
 type ChatCompletionResponse struct {
-	Id                string    `json:"id"`
-	Created           int       `json:"created"`
-	Object            string    `json:"object,omitempty"`
-	Model             string    `json:"model"`
-	Choices           []*Choice `json:"choices"`
-	Usage             *Usage    `json:"usage"`
-	Blocked           *bool     `json:"blocked,omitempty"`
-	SystemFingerprint *string   `json:"system_fingerprint,omitempty"` // OpenAI 系统指纹
-	ServiceTier       *string   `json:"service_tier,omitempty"`       // 服务层级信息
+	Id                string                  `json:"id"`
+	Created           int                     `json:"created"`
+	Object            string                  `json:"object,omitempty"`
+	Model             string                  `json:"model"`
+	Choices           []*ChatCompletionChoice `json:"choices"`
+	Usage             *Usage                  `json:"usage"`
+	Blocked           *bool                   `json:"blocked,omitempty"`
+	SystemFingerprint *string                 `json:"system_fingerprint,omitempty"` // OpenAI 系统指纹
+	ServiceTier       *string                 `json:"service_tier,omitempty"`       // 服务层级信息
 }
 
-type Choice struct {
-	FinishReason string    `json:"finish_reason"`
-	Index        int       `json:"index"`
-	Message      *Message  `json:"message,omitempty"`
-	Delta        *Message  `json:"delta,omitempty"`
-	Logprobs     *Logprobs `json:"logprobs,omitempty"` // Token 概率信息
+// ChatCompletionStreamResponse represents a streaming chat completion response chunk
+type ChatCompletionStreamChunk struct {
+	Id                string                        `json:"id"`
+	Created           int                           `json:"created"`
+	Object            string                        `json:"object,omitempty"`
+	Model             string                        `json:"model"`
+	Choices           []*ChatCompletionStreamChoice `json:"choices"`
+	Usage             *Usage                        `json:"usage,omitempty"` // Only present in the final chunk
+	SystemFingerprint *string                       `json:"system_fingerprint,omitempty"`
+	ServiceTier       *string                       `json:"service_tier,omitempty"`
+}
+
+// ChatCompletionChoice represents a non-streaming choice
+type ChatCompletionChoice struct {
+	FinishReason string   `json:"finish_reason"`
+	Index        int      `json:"index"`
+	Message      *Message `json:"message"`
+}
+
+// ChatCompletionStreamChoice represents a streaming choice with delta
+type ChatCompletionStreamChoice struct {
+	FinishReason string   `json:"finish_reason,omitempty"` // Only present when stream ends
+	Index        int      `json:"index"`
+	Delta        *Message `json:"delta"`
 }
 
 type Logprobs struct {
