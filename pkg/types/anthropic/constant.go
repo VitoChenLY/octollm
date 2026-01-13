@@ -1,4 +1,4 @@
-package types
+package anthropic
 
 const (
 	MessageContentToolResultType = "tool_result"

@@ -13,13 +13,13 @@ func TestOpenAIAdapter_ExtractTextFromRequest(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		req     *openai.ApiChatCompletionsRequest
+		req     *openai.ChatCompletionRequest
 		want    string
 		wantErr bool
 	}{
 		{
 			name: "simple string content",
-			req: &openai.ApiChatCompletionsRequest{
+			req: &openai.ChatCompletionRequest{
 				Model: "gpt-4",
 				Messages: []*openai.Message{
 					{
@@ -37,7 +37,7 @@ func TestOpenAIAdapter_ExtractTextFromRequest(t *testing.T) {
 		},
 		{
 			name: "array content",
-			req: &openai.ApiChatCompletionsRequest{
+			req: &openai.ChatCompletionRequest{
 				Model: "gpt-4",
 				Messages: []*openai.Message{
 					{
@@ -54,7 +54,7 @@ func TestOpenAIAdapter_ExtractTextFromRequest(t *testing.T) {
 		},
 		{
 			name: "with reasoning content",
-			req: &openai.ApiChatCompletionsRequest{
+			req: &openai.ChatCompletionRequest{
 				Model: "gpt-4",
 				Messages: []*openai.Message{
 					{
@@ -69,7 +69,7 @@ func TestOpenAIAdapter_ExtractTextFromRequest(t *testing.T) {
 		},
 		{
 			name: "with reasoning content and array content",
-			req: &openai.ApiChatCompletionsRequest{
+			req: &openai.ChatCompletionRequest{
 				Model: "gpt-4",
 				Messages: []*openai.Message{
 					{
@@ -90,7 +90,7 @@ func TestOpenAIAdapter_ExtractTextFromRequest(t *testing.T) {
 		},
 		{
 			name: "with tool calls",
-			req: &openai.ApiChatCompletionsRequest{
+			req: &openai.ChatCompletionRequest{
 				Model: "gpt-4",
 				Messages: []*openai.Message{
 					{
@@ -116,7 +116,7 @@ func TestOpenAIAdapter_ExtractTextFromRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ApiChatCompletionsRequest]{})
+			body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionRequest]{})
 			body.SetParsed(tt.req)
 
 			got, err := adapter.ExtractTextFromBody(context.Background(), body)
@@ -134,7 +134,7 @@ func TestOpenAIAdapter_ExtractTextFromRequest(t *testing.T) {
 func TestOpenAIAdapter_ExtractTextFromResponse_NonStreaming(t *testing.T) {
 	adapter := &OpenAIAdapter{}
 
-	resp := &openai.ApiChatCompletionsResponse{
+	resp := &openai.ChatCompletionResponse{
 		Id:      "chatcmpl-123",
 		Object:  "chat.completion",
 		Created: 1234567890,
@@ -151,7 +151,7 @@ func TestOpenAIAdapter_ExtractTextFromResponse_NonStreaming(t *testing.T) {
 		},
 	}
 
-	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ApiChatCompletionsResponse]{})
+	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionResponse]{})
 	body.SetParsed(resp)
 
 	got, err := adapter.ExtractTextFromBody(context.Background(), body)
@@ -168,7 +168,7 @@ func TestOpenAIAdapter_ExtractTextFromResponse_NonStreaming(t *testing.T) {
 func TestOpenAIAdapter_ExtractTextFromResponse_Streaming(t *testing.T) {
 	adapter := &OpenAIAdapter{}
 
-	resp := &openai.ApiChatCompletionsResponse{
+	resp := &openai.ChatCompletionResponse{
 		Id:      "chatcmpl-123",
 		Object:  "chat.completion.chunk",
 		Created: 1234567890,
@@ -184,7 +184,7 @@ func TestOpenAIAdapter_ExtractTextFromResponse_Streaming(t *testing.T) {
 		},
 	}
 
-	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ApiChatCompletionsResponse]{})
+	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionResponse]{})
 	body.SetParsed(resp)
 
 	got, err := adapter.ExtractTextFromBody(context.Background(), body)
@@ -201,7 +201,7 @@ func TestOpenAIAdapter_ExtractTextFromResponse_Streaming(t *testing.T) {
 func TestOpenAIAdapter_ExtractTextFromResponse_WithToolCalls(t *testing.T) {
 	adapter := &OpenAIAdapter{}
 
-	resp := &openai.ApiChatCompletionsResponse{
+	resp := &openai.ChatCompletionResponse{
 		Id:      "chatcmpl-123",
 		Object:  "chat.completion",
 		Created: 1234567890,
@@ -228,7 +228,7 @@ func TestOpenAIAdapter_ExtractTextFromResponse_WithToolCalls(t *testing.T) {
 		},
 	}
 
-	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ApiChatCompletionsResponse]{})
+	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionResponse]{})
 	body.SetParsed(resp)
 
 	got, err := adapter.ExtractTextFromBody(context.Background(), body)
@@ -248,7 +248,7 @@ func TestOpenAIAdapter_GetReplacementBody_NonStreaming(t *testing.T) {
 		ReplacementFinishReason:        "content_filter",
 	}
 
-	originalResp := &openai.ApiChatCompletionsResponse{
+	originalResp := &openai.ChatCompletionResponse{
 		Id:      "chatcmpl-123",
 		Object:  "chat.completion",
 		Created: 1234567890,
@@ -270,7 +270,7 @@ func TestOpenAIAdapter_GetReplacementBody_NonStreaming(t *testing.T) {
 		},
 	}
 
-	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ApiChatCompletionsResponse]{})
+	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionResponse]{})
 	body.SetParsed(originalResp)
 
 	replacementBody := adapter.GetReplacementBody(context.Background(), body)
@@ -283,7 +283,7 @@ func TestOpenAIAdapter_GetReplacementBody_NonStreaming(t *testing.T) {
 		t.Fatalf("Failed to parse replacement body: %v", err)
 	}
 
-	replacement := parsed.(*openai.ApiChatCompletionsResponse)
+	replacement := parsed.(*openai.ChatCompletionResponse)
 
 	// 验证基本字段
 	if replacement.Id != "chatcmpl-123" {
@@ -327,7 +327,7 @@ func TestOpenAIAdapter_GetReplacementBody_Streaming(t *testing.T) {
 		ReplacementFinishReason:     "content_filter",
 	}
 
-	originalResp := &openai.ApiChatCompletionsResponse{
+	originalResp := &openai.ChatCompletionResponse{
 		Id:      "chatcmpl-456",
 		Object:  "chat.completion.chunk",
 		Created: 1234567890,
@@ -342,7 +342,7 @@ func TestOpenAIAdapter_GetReplacementBody_Streaming(t *testing.T) {
 		},
 	}
 
-	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ApiChatCompletionsResponse]{})
+	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionResponse]{})
 	body.SetParsed(originalResp)
 
 	replacementBody := adapter.GetReplacementBody(context.Background(), body)
@@ -355,7 +355,7 @@ func TestOpenAIAdapter_GetReplacementBody_Streaming(t *testing.T) {
 		t.Fatalf("Failed to parse replacement body: %v", err)
 	}
 
-	replacement := parsed.(*openai.ApiChatCompletionsResponse)
+	replacement := parsed.(*openai.ChatCompletionResponse)
 
 	// 验证替换内容
 	if len(replacement.Choices) != 1 {
@@ -382,7 +382,7 @@ func TestOpenAIAdapter_GetReplacementBody_NoReplacement(t *testing.T) {
 		// 没有设置替换文本
 	}
 
-	originalResp := &openai.ApiChatCompletionsResponse{
+	originalResp := &openai.ChatCompletionResponse{
 		Id:    "chatcmpl-123",
 		Model: "gpt-4",
 		Choices: []*openai.Choice{
@@ -394,7 +394,7 @@ func TestOpenAIAdapter_GetReplacementBody_NoReplacement(t *testing.T) {
 		},
 	}
 
-	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ApiChatCompletionsResponse]{})
+	body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionResponse]{})
 	body.SetParsed(originalResp)
 
 	replacementBody := adapter.GetReplacementBody(context.Background(), body)

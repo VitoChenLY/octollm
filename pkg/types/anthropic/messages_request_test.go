@@ -20,7 +20,7 @@ func TestApiMessagesRequest_UnmarshalJSON_StringContent(t *testing.T) {
 		]
 	}`
 
-	var req ApiMessagesRequest
+	var req ClaudeMessagesRequest
 	err := json.Unmarshal([]byte(jsonStr), &req)
 	require.NoError(t, err)
 
@@ -61,7 +61,7 @@ func TestApiMessagesRequest_UnmarshalJSON_ArrayContent(t *testing.T) {
 		]
 	}`
 
-	var req ApiMessagesRequest
+	var req ClaudeMessagesRequest
 	err := json.Unmarshal([]byte(jsonStr), &req)
 	require.NoError(t, err)
 
@@ -96,7 +96,7 @@ func TestApiMessagesRequest_UnmarshalJSON_ObjectContent(t *testing.T) {
 		]
 	}`
 
-	var req ApiMessagesRequest
+	var req ClaudeMessagesRequest
 	err := json.Unmarshal([]byte(jsonStr), &req)
 	require.NoError(t, err)
 
@@ -114,7 +114,7 @@ func TestApiMessagesRequest_UnmarshalJSON_ObjectContent(t *testing.T) {
 
 func TestApiMessagesRequest_MarshalJSON_SimpleRequest(t *testing.T) {
 	text := "Hello, Claude!"
-	req := &ApiMessagesRequest{
+	req := &ClaudeMessagesRequest{
 		Model:     "claude-3-5-sonnet-20241022",
 		MaxTokens: 1024,
 		Messages: []*MessageParam{
@@ -163,7 +163,7 @@ func TestApiMessagesRequest_MarshalJSON_SimpleRequest(t *testing.T) {
 
 func TestApiMessagesRequest_MarshalJSON_WithSystemString(t *testing.T) {
 	text := "Hello!"
-	req := &ApiMessagesRequest{
+	req := &ClaudeMessagesRequest{
 		Model:     "claude-3-5-sonnet-20241022",
 		MaxTokens: 1024,
 		System:    SystemString("You are a helpful assistant"),
@@ -195,7 +195,7 @@ func TestApiMessagesRequest_MarshalJSON_WithSystemString(t *testing.T) {
 
 func TestApiMessagesRequest_MarshalJSON_WithMultiSystem(t *testing.T) {
 	text := "Hello!"
-	req := &ApiMessagesRequest{
+	req := &ClaudeMessagesRequest{
 		Model:     "claude-3-5-sonnet-20241022",
 		MaxTokens: 1024,
 		System: SystemBlocks{
@@ -252,7 +252,7 @@ func TestApiMessagesRequest_UnmarshalJSON_WithSystemString(t *testing.T) {
 		]
 	}`
 
-	var req ApiMessagesRequest
+	var req ClaudeMessagesRequest
 	err := json.Unmarshal([]byte(jsonStr), &req)
 	require.NoError(t, err)
 
@@ -287,7 +287,7 @@ func TestApiMessagesRequest_UnmarshalJSON_WithSystemArray(t *testing.T) {
 		]
 	}`
 
-	var req ApiMessagesRequest
+	var req ClaudeMessagesRequest
 	err := json.Unmarshal([]byte(jsonStr), &req)
 	require.NoError(t, err)
 
@@ -304,7 +304,7 @@ func TestApiMessagesRequest_UnmarshalJSON_WithSystemArray(t *testing.T) {
 }
 
 func TestApiMessagesRequest_RoundTrip_SystemString(t *testing.T) {
-	original := &ApiMessagesRequest{
+	original := &ClaudeMessagesRequest{
 		Model:     "claude-3-5-sonnet-20241022",
 		MaxTokens: 1024,
 		System:    SystemString("You are a helpful assistant"),
@@ -321,7 +321,7 @@ func TestApiMessagesRequest_RoundTrip_SystemString(t *testing.T) {
 	data, err := json.Marshal(original)
 	require.NoError(t, err)
 
-	var unmarshaled ApiMessagesRequest
+	var unmarshaled ClaudeMessagesRequest
 	err = json.Unmarshal(data, &unmarshaled)
 	require.NoError(t, err)
 
@@ -332,7 +332,7 @@ func TestApiMessagesRequest_RoundTrip_SystemString(t *testing.T) {
 }
 
 func TestApiMessagesRequest_RoundTrip_SystemBlocks(t *testing.T) {
-	original := &ApiMessagesRequest{
+	original := &ClaudeMessagesRequest{
 		Model:     "claude-3-5-sonnet-20241022",
 		MaxTokens: 1024,
 		System: SystemBlocks{
@@ -354,7 +354,7 @@ func TestApiMessagesRequest_RoundTrip_SystemBlocks(t *testing.T) {
 	data, err := json.Marshal(original)
 	require.NoError(t, err)
 
-	var unmarshaled ApiMessagesRequest
+	var unmarshaled ClaudeMessagesRequest
 	err = json.Unmarshal(data, &unmarshaled)
 	require.NoError(t, err)
 
@@ -403,7 +403,7 @@ func TestApiMessagesRequest_UnmarshalJSON_WithToolResult(t *testing.T) {
 		]
 	}`
 
-	var req ApiMessagesRequest
+	var req ClaudeMessagesRequest
 	err := json.Unmarshal([]byte(jsonStr), &req)
 	require.NoError(t, err, "should successfully unmarshal tool_result with nested content")
 

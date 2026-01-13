@@ -5,8 +5,8 @@ import (
 	"fmt"
 )
 
-// ApiMessagesRequest represents a complete Anthropic Messages API request
-type ApiMessagesRequest struct {
+// MessagesRequest represents a complete Anthropic Messages API request
+type ClaudeMessagesRequest struct {
 	MaxTokens   int64           `json:"max_tokens"`
 	Messages    []*MessageParam `json:"messages"`
 	Model       string          `json:"model"`
@@ -21,11 +21,11 @@ type ApiMessagesRequest struct {
 	Thinking      *ThinkingConfig   `json:"thinking,omitempty"`
 	Tools         []*ToolDefinition `json:"tools,omitempty"`
 	ToolChoice    *ToolChoice       `json:"tool_choice,omitempty"`
-	ServiceTier   *string           `json:"service_tier,omitempty"`
+	// ServiceTier   *string           `json:"service_tier,omitempty"`
 
-	AnthropicBeta    json.RawMessage `json:"anthropic_beta,omitempty"` // Bedrock 格式需要，直接透传
-	StreamOptions    *StreamOptions  `json:"stream_options,omitempty"`
-	AnthropicVersion string          `json:"anthropic_version,omitempty"`
+	// AnthropicBeta json.RawMessage `json:"anthropic_beta,omitempty"` // Bedrock 格式需要，直接透传
+	// StreamOptions    *StreamOptions  `json:"stream_options,omitempty"`
+	// AnthropicVersion string `json:"anthropic_version,omitempty"`
 }
 
 type StreamOptions struct {
@@ -286,8 +286,8 @@ type MessageCacheControl struct {
 	TTL  *string `json:"ttl,omitempty"`
 }
 
-func (m ApiMessagesRequest) MarshalJSON() ([]byte, error) {
-	type Alias ApiMessagesRequest
+func (m ClaudeMessagesRequest) MarshalJSON() ([]byte, error) {
+	type Alias ClaudeMessagesRequest
 	aux := struct {
 		System interface{} `json:"system,omitempty"`
 		Alias
@@ -302,8 +302,8 @@ func (m ApiMessagesRequest) MarshalJSON() ([]byte, error) {
 	return json.Marshal(aux)
 }
 
-func (m *ApiMessagesRequest) UnmarshalJSON(data []byte) error {
-	type Alias ApiMessagesRequest
+func (m *ClaudeMessagesRequest) UnmarshalJSON(data []byte) error {
+	type Alias ClaudeMessagesRequest
 	aux := &struct {
 		System json.RawMessage `json:"system,omitempty"`
 		*Alias

@@ -1,6 +1,6 @@
 package openai
 
-type ApiChatCompletionsResponse struct {
+type ChatCompletionResponse struct {
 	Id                string    `json:"id"`
 	Created           int       `json:"created"`
 	Object            string    `json:"object,omitempty"`
@@ -25,24 +25,24 @@ type Logprobs struct {
 }
 
 type TokenLogprob struct {
-	Token       string        `json:"token"`                 // Token 文本
-	Logprob     float64       `json:"logprob"`               // 对数概率
-	Bytes       []int         `json:"bytes,omitempty"`       // UTF-8 字节序列
-	TopLogprobs []TopLogprob  `json:"top_logprobs,omitempty"` // 前 N 个候选 token
+	Token       string       `json:"token"`                  // Token 文本
+	Logprob     float64      `json:"logprob"`                // 对数概率
+	Bytes       []int        `json:"bytes,omitempty"`        // UTF-8 字节序列
+	TopLogprobs []TopLogprob `json:"top_logprobs,omitempty"` // 前 N 个候选 token
 }
 
 type TopLogprob struct {
-	Token   string  `json:"token"`             // 候选 Token 文本
-	Logprob float64 `json:"logprob"`           // 对数概率
-	Bytes   []int   `json:"bytes,omitempty"`   // UTF-8 字节序列
+	Token   string  `json:"token"`           // 候选 Token 文本
+	Logprob float64 `json:"logprob"`         // 对数概率
+	Bytes   []int   `json:"bytes,omitempty"` // UTF-8 字节序列
 }
 
 type Usage struct {
-	CompletionTokens       int                     `json:"completion_tokens"`
-	PromptTokens           int                     `json:"prompt_tokens"`
-	TotalTokens            int                     `json:"total_tokens"`
+	CompletionTokens        int                      `json:"completion_tokens"`
+	PromptTokens            int                      `json:"prompt_tokens"`
+	TotalTokens             int                      `json:"total_tokens"`
 	CompletionTokensDetails *CompletionTokensDetails `json:"completion_tokens_details,omitempty"` // 详细的 completion tokens 信息
-	PromptTokensDetails    *PromptTokensDetails    `json:"prompt_tokens_details,omitempty"`    // 详细的 prompt tokens 信息
+	PromptTokensDetails     *PromptTokensDetails     `json:"prompt_tokens_details,omitempty"`     // 详细的 prompt tokens 信息
 }
 
 // CompletionTokensDetails 完成 token 的详细信息

@@ -67,7 +67,7 @@ func NewGeneralEndpoint(conf GeneralEndpointConfig) *GeneralEndpoint {
 				case octollm.APIFormatClaudeMessages:
 					return &octollm.JSONParser[anthropic.Message]{}
 				default:
-					return &octollm.JSONParser[openai.ApiChatCompletionsResponse]{}
+					return &octollm.JSONParser[openai.ChatCompletionResponse]{}
 				}
 			},
 			func(req *octollm.Request) octollm.Parser {
@@ -75,7 +75,7 @@ func NewGeneralEndpoint(conf GeneralEndpointConfig) *GeneralEndpoint {
 				case octollm.APIFormatClaudeMessages:
 					return &octollm.JSONParser[anthropic.BetaRawMessageStreamEventUnion]{}
 				default:
-					return &octollm.JSONParser[openai.ApiChatCompletionsResponse]{}
+					return &octollm.JSONParser[openai.ChatCompletionResponse]{}
 				}
 			},
 		)
