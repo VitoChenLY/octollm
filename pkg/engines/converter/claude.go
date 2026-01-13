@@ -321,7 +321,7 @@ func (e *ChatCompletionToClaudeMessages) convertNonStreamResponseBody(ctx contex
 
 	// Construct Claude Response
 	claudeResp := &anthropic.ClaudeMessagesResponse{
-		ID:    openaiResp.Id,
+		ID:    openaiResp.ID,
 		Type:  "message",
 		Role:  "assistant",
 		Model: openaiResp.Model,
@@ -485,7 +485,7 @@ func (e *ChatCompletionToClaudeMessages) convertStreamResponse(ctx context.Conte
 			}
 
 			if !started {
-				msgID = openaiChunk.Id
+				msgID = openaiChunk.ID
 				model = openaiChunk.Model
 				// Send message_start
 				msgStart := &anthropic.ClaudeMessagesStreamEvent{

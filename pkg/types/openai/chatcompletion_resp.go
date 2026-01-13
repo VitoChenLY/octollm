@@ -2,7 +2,7 @@ package openai
 
 // ChatCompletionResponse represents a non-streaming chat completion response
 type ChatCompletionResponse struct {
-	Id                string                  `json:"id"`
+	ID                string                  `json:"id"`
 	Created           int                     `json:"created"`
 	Object            string                  `json:"object,omitempty"`
 	Model             string                  `json:"model"`
@@ -15,7 +15,7 @@ type ChatCompletionResponse struct {
 
 // ChatCompletionStreamResponse represents a streaming chat completion response chunk
 type ChatCompletionStreamChunk struct {
-	Id                string                        `json:"id"`
+	ID                string                        `json:"id"`
 	Created           int                           `json:"created"`
 	Object            string                        `json:"object,omitempty"`
 	Model             string                        `json:"model"`

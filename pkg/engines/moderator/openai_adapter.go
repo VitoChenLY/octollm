@@ -128,7 +128,7 @@ func (a *OpenAIAdapter) getReplacementNonStreamResponse(ctx context.Context, res
 	// 非流式响应
 	if resp.Choices[0].Message != nil && a.ReplacementTextForNonStreaming != "" {
 		r := &openai.ChatCompletionResponse{
-			Id:      resp.Id,
+			ID:      resp.ID,
 			Object:  resp.Object,
 			Created: resp.Created,
 			Model:   resp.Model,
@@ -154,7 +154,7 @@ func (a *OpenAIAdapter) getReplacementStreamResponse(ctx context.Context, resp *
 	// 流式响应
 	if resp.Choices[0].Delta != nil && a.ReplacementTextForStreaming != "" {
 		r := &openai.ChatCompletionStreamChunk{
-			Id:      resp.Id,
+			ID:      resp.ID,
 			Object:  resp.Object,
 			Created: resp.Created,
 			Model:   resp.Model,

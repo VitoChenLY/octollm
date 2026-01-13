@@ -174,7 +174,7 @@ func TestApiChatCompletionsToApiMessages_convertNonStreamResponseBody(t *testing
 
 	// Create OpenAI response
 	openaiResp := &openai.ChatCompletionResponse{
-		Id:     "msg_123",
+		ID:     "msg_123",
 		Model:  "gpt-4",
 		Object: "chat.completion",
 		Choices: []*openai.ChatCompletionChoice{
@@ -230,7 +230,7 @@ func TestApiChatCompletionsToApiMessages_convertNonStreamResponseBody_WithToolCa
 
 	// Create OpenAI response with tool call
 	openaiResp := &openai.ChatCompletionResponse{
-		Id:     "msg_456",
+		ID:     "msg_456",
 		Model:  "gpt-4",
 		Object: "chat.completion",
 		Choices: []*openai.ChatCompletionChoice{

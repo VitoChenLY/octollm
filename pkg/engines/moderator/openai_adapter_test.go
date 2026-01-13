@@ -135,7 +135,7 @@ func TestOpenAIAdapter_ExtractTextFromResponse_NonStreaming(t *testing.T) {
 	adapter := &OpenAIAdapter{}
 
 	resp := &openai.ChatCompletionResponse{
-		Id:      "chatcmpl-123",
+		ID:      "chatcmpl-123",
 		Object:  "chat.completion",
 		Created: 1234567890,
 		Model:   "gpt-4",
@@ -169,7 +169,7 @@ func TestOpenAIAdapter_ExtractTextFromResponse_Streaming(t *testing.T) {
 	adapter := &OpenAIAdapter{}
 
 	resp := &openai.ChatCompletionStreamChunk{
-		Id:      "chatcmpl-123",
+		ID:      "chatcmpl-123",
 		Object:  "chat.completion.chunk",
 		Created: 1234567890,
 		Model:   "gpt-4",
@@ -202,7 +202,7 @@ func TestOpenAIAdapter_ExtractTextFromResponse_WithToolCalls(t *testing.T) {
 	adapter := &OpenAIAdapter{}
 
 	resp := &openai.ChatCompletionResponse{
-		Id:      "chatcmpl-123",
+		ID:      "chatcmpl-123",
 		Object:  "chat.completion",
 		Created: 1234567890,
 		Model:   "gpt-4",
@@ -249,7 +249,7 @@ func TestOpenAIAdapter_GetReplacementBody_NonStreaming(t *testing.T) {
 	}
 
 	originalResp := &openai.ChatCompletionResponse{
-		Id:      "chatcmpl-123",
+		ID:      "chatcmpl-123",
 		Object:  "chat.completion",
 		Created: 1234567890,
 		Model:   "gpt-4",
@@ -286,8 +286,8 @@ func TestOpenAIAdapter_GetReplacementBody_NonStreaming(t *testing.T) {
 	replacement := parsed.(*openai.ChatCompletionResponse)
 
 	// 验证基本字段
-	if replacement.Id != "chatcmpl-123" {
-		t.Errorf("Id = %v, want chatcmpl-123", replacement.Id)
+	if replacement.ID != "chatcmpl-123" {
+		t.Errorf("ID = %v, want chatcmpl-123", replacement.ID)
 	}
 	if replacement.Model != "gpt-4" {
 		t.Errorf("Model = %v, want gpt-4", replacement.Model)
@@ -328,7 +328,7 @@ func TestOpenAIAdapter_GetReplacementBody_Streaming(t *testing.T) {
 	}
 
 	originalResp := &openai.ChatCompletionStreamChunk{
-		Id:      "chatcmpl-456",
+		ID:      "chatcmpl-456",
 		Object:  "chat.completion.chunk",
 		Created: 1234567890,
 		Model:   "gpt-4",
@@ -383,7 +383,7 @@ func TestOpenAIAdapter_GetReplacementBody_NoReplacement(t *testing.T) {
 	}
 
 	originalResp := &openai.ChatCompletionResponse{
-		Id:    "chatcmpl-123",
+		ID:    "chatcmpl-123",
 		Model: "gpt-4",
 		Choices: []*openai.ChatCompletionChoice{
 			{
