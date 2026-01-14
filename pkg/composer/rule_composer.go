@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	loadbalancer "github.com/infinigence/octollm/pkg/engines/load-balancer"
+	"github.com/infinigence/octollm/pkg/engines/moderator"
 	ruleengine "github.com/infinigence/octollm/pkg/engines/rule-engine"
 	"github.com/infinigence/octollm/pkg/errutils"
 	"github.com/infinigence/octollm/pkg/octollm"
@@ -121,6 +122,11 @@ func (r *RuleComposerFileBased) getEngine(orgName, modelName string) (octollm.En
 		}
 	}
 
+	// 应用重复检测（如果配置了）
+	if model.DuplicationDetection != nil && model.DuplicationDetection.Enabled {
+		engine = r.wrapWithDuplicationDetector(engine, model.DuplicationDetection)
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -165,6 +171,36 @@ func (r *RuleComposerFileBased) buildDefaultEngine(modelName string) (octollm.En
 	}
 
 	return lb, nil
+}
+
+// wrapWithDuplicationDetector 包装重复检测器
+func (r *RuleComposerFileBased) wrapWithDuplicationDetector(engine octollm.Engine, config *DuplicationDetectionConfig) octollm.Engine {
+	detectorConfig := &moderator.DuplicationDetectorConfig{
+		MinRepeatLen:    config.MinRepeatLen,
+		MaxRepeatLen:    config.MaxRepeatLen,
+		RepeatThreshold: config.RepeatThreshold,
+		DetectTimeout:   time.Duration(config.TimeoutSeconds) * time.Second,
+	}
+
+	// 如果配置值为 0，使用默认值
+	if detectorConfig.MinRepeatLen == 0 {
+		detectorConfig.MinRepeatLen = 1
+	}
+	if detectorConfig.MaxRepeatLen == 0 {
+		detectorConfig.MaxRepeatLen = 5
+	}
+	if detectorConfig.RepeatThreshold == 0 {
+		detectorConfig.RepeatThreshold = 50
+	}
+	if detectorConfig.DetectTimeout == 0 {
+		detectorConfig.DetectTimeout = 1 * time.Second
+	}
+
+	return moderator.NewDuplicationDetector(
+		&moderator.OpenAIAdapter{},
+		detectorConfig,
+		engine,
+	)
 }
 
 func (r *RuleComposerFileBased) buildEngineByRuleList(ruleConfs RuleList, modelName string, defaultEngine octollm.Engine) (octollm.Engine, error) {

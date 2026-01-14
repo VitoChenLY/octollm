@@ -25,6 +25,17 @@ type Model struct {
 	RequestRewrites     *engines.RewritePolicy `json:"request_rewrites" yaml:"request_rewrites"`
 	ResponseRewrites    *engines.RewritePolicy `json:"response_rewrites" yaml:"response_rewrites"`
 	StreamChunkRewrites *engines.RewritePolicy `json:"stream_chunk_rewrites" yaml:"stream_chunk_rewrites"`
+
+	DuplicationDetection *DuplicationDetectionConfig `json:"duplication_detection" yaml:"duplication_detection"`
+}
+
+// DuplicationDetectionConfig 重复检测配置
+type DuplicationDetectionConfig struct {
+	Enabled         bool `json:"enabled" yaml:"enabled"`                   // 是否启用
+	MinRepeatLen    int  `json:"min_repeat_len" yaml:"min_repeat_len"`     // 最小重复长度
+	MaxRepeatLen    int  `json:"max_repeat_len" yaml:"max_repeat_len"`     // 最大重复长度
+	RepeatThreshold int  `json:"repeat_threshold" yaml:"repeat_threshold"` // 重复次数阈值
+	TimeoutSeconds  int  `json:"timeout_seconds" yaml:"timeout_seconds"`   // 检测超时（秒）
 }
 
 type Backend struct {
