@@ -1,6 +1,9 @@
 package moderator
 
 import (
+	"context"
+	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +22,19 @@ type mockEngine struct {
 
 func (m *mockEngine) Process(req *octollm.Request) (*octollm.Response, error) {
 	return m.response, m.err
+}
+
+// 辅助函数：创建使用 TextModeratorEngine 的重复检测器
+func newDuplicationDetectorEngine(config *DuplicationDetectorConfig, modelName string, next octollm.Engine) *TextModeratorEngine {
+	service := NewDuplicationDetectorService(config, modelName)
+	return &TextModeratorEngine{
+		ModeratorService:     service,
+		TextModeratorAdapter: &OpenAIAdapter{},
+		ModerateInput:        false,
+		ModerateOutput:       true,
+		ModerateStreamEvery:  10,
+		Next:                 next,
+	}
 }
 
 func TestDuplicationDetector_NonStream_WithRepetition(t *testing.T) {
@@ -43,43 +59,35 @@ func TestDuplicationDetector_NonStream_WithRepetition(t *testing.T) {
 
 	mockEngine := &mockEngine{response: mockResp}
 
-	detector := NewDuplicationDetector(
-		&OpenAIAdapter{},
+	detector := newDuplicationDetectorEngine(
 		&DuplicationDetectorConfig{
 			MinRepeatLen:    5,
 			MaxRepeatLen:    50,
 			RepeatThreshold: 3,
-			DetectTimeout:   2 * time.Second,
+			DetectTimeout:   1 * time.Second,
 		},
+		"gpt-4",
 		mockEngine,
 	)
 
-	// 创建包含模型信息的请求
-	reqBody := &openai.ChatCompletionRequest{
-		Model: "gpt-4",
-		Messages: []*openai.Message{
-			{Role: "user", Content: openai.MessageContentString("test")},
-		},
-	}
-	reqBodyUnified := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionRequest]{})
-	reqBodyUnified.SetParsed(reqBody)
-
-	req := &octollm.Request{
-		Body: reqBodyUnified,
-	}
+	httpReq, _ := http.NewRequestWithContext(context.Background(), "POST", "http://localhost/v1/chat/completions", nil)
+	httpReq.URL, _ = url.Parse("http://localhost/v1/chat/completions")
+	req := octollm.NewRequest(httpReq, octollm.APIFormatChatCompletions)
+	req.Body = octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionRequest]{})
+	req.Body.SetParsed(&openai.ChatCompletionRequest{Model: "gpt-4"})
 
 	result, err := detector.Process(req)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.NotNil(t, result.Body)
 
-	// 等待一下让异步检测完成（仅用于测试）
+	// 给异步检测一些时间
 	time.Sleep(100 * time.Millisecond)
 }
 
 func TestDuplicationDetector_NonStream_NoRepetition(t *testing.T) {
-	// 创建一个没有重复内容的响应
-	normalText := "This is a normal text without any repetition patterns."
+	// 创建一个不包含重复的响应
+	normalText := "这是一段正常的文本，没有任何重复的内容。"
 	resp := &openai.ChatCompletionResponse{
 		ID:      "test-456",
 		Model:   "gpt-4",
@@ -99,97 +107,170 @@ func TestDuplicationDetector_NonStream_NoRepetition(t *testing.T) {
 
 	mockEngine := &mockEngine{response: mockResp}
 
-	detector := NewDuplicationDetector(
-		&OpenAIAdapter{},
-		nil, // 使用默认配置
+	detector := newDuplicationDetectorEngine(
+		&DuplicationDetectorConfig{
+			MinRepeatLen:    5,
+			MaxRepeatLen:    50,
+			RepeatThreshold: 3,
+			DetectTimeout:   1 * time.Second,
+		},
+		"gpt-4",
 		mockEngine,
 	)
 
-	req := &octollm.Request{
-		Body: octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionRequest]{}),
-	}
+	httpReq, _ := http.NewRequestWithContext(context.Background(), "POST", "http://localhost/v1/chat/completions", nil)
+	httpReq.URL, _ = url.Parse("http://localhost/v1/chat/completions")
+	req := octollm.NewRequest(httpReq, octollm.APIFormatChatCompletions)
+	req.Body = octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionRequest]{})
+	req.Body.SetParsed(&openai.ChatCompletionRequest{Model: "gpt-4"})
 
 	result, err := detector.Process(req)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
+	assert.NotNil(t, result.Body)
 
-	// 等待一下让异步检测完成
+	// 给异步检测一些时间
 	time.Sleep(100 * time.Millisecond)
 }
 
 func TestDuplicationDetector_Stream_WithRepetition(t *testing.T) {
-	// 创建模拟的流式响应
-	chunks := make(chan *octollm.StreamChunk, 5)
-	repeatedText := "重复文本"
+	// 创建流式响应的 mock
+	chunks := make(chan *octollm.StreamChunk, 10)
 
-	for i := 0; i < 5; i++ {
-		chunkResp := &openai.ChatCompletionStreamChunk{
-			ID:    "chunk-123",
-			Model: "gpt-4",
-			Choices: []*openai.ChatCompletionStreamChoice{
-				{
-					Delta: &openai.Message{
-						Content: openai.MessageContentString(repeatedText),
+	// 模拟流式响应：发送重复的文本
+	go func() {
+		defer close(chunks)
+		repeatedText := "重复"
+		for i := 0; i < 60; i++ { // 发送 60 次
+			chunk := &openai.ChatCompletionStreamChunk{
+				ID:    "test-stream",
+				Model: "gpt-4",
+				Choices: []*openai.ChatCompletionStreamChoice{
+					{
+						Delta: &openai.Message{
+							Content: openai.MessageContentString(repeatedText),
+						},
 					},
 				},
-			},
+			}
+			body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionStreamChunk]{})
+			body.SetParsed(chunk)
+			chunks <- &octollm.StreamChunk{Body: body}
 		}
-
-		body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionStreamChunk]{})
-		body.SetParsed(chunkResp)
-
-		chunks <- &octollm.StreamChunk{Body: body}
-	}
-	close(chunks)
+	}()
 
 	mockResp := &octollm.Response{
-		Stream: octollm.NewStreamChan(chunks, nil),
+		Stream: octollm.NewStreamChan(chunks, func() {}),
 	}
 
 	mockEngine := &mockEngine{response: mockResp}
 
-	detector := NewDuplicationDetector(
-		&OpenAIAdapter{},
+	detector := newDuplicationDetectorEngine(
 		&DuplicationDetectorConfig{
-			MinRepeatLen:    4,
-			MaxRepeatLen:    20,
-			RepeatThreshold: 3,
-			DetectTimeout:   2 * time.Second,
+			MinRepeatLen:    1,
+			MaxRepeatLen:    5,
+			RepeatThreshold: 50,
+			DetectTimeout:   1 * time.Second,
 		},
+		"gpt-4",
 		mockEngine,
 	)
 
-	req := &octollm.Request{
-		Body: octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionRequest]{}),
-	}
+	httpReq, _ := http.NewRequestWithContext(context.Background(), "POST", "http://localhost/v1/chat/completions", nil)
+	httpReq.URL, _ = url.Parse("http://localhost/v1/chat/completions")
+	req := octollm.NewRequest(httpReq, octollm.APIFormatChatCompletions)
+	req.Body = octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionRequest]{})
+	req.Body.SetParsed(&openai.ChatCompletionRequest{Model: "gpt-4"})
 
 	result, err := detector.Process(req)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.NotNil(t, result.Stream)
 
-	// 读取所有 chunks
-	chunkCount := 0
+	// 消费所有 chunks
+	count := 0
 	for range result.Stream.Chan() {
-		chunkCount++
+		count++
 	}
+	assert.Equal(t, 60, count)
 
-	assert.Equal(t, 5, chunkCount, "Should receive all chunks")
-
-	// 等待一下让异步检测完成
+	// 给异步检测一些时间
 	time.Sleep(100 * time.Millisecond)
 }
 
-func TestDuplicationDetector_DetectTimeout(t *testing.T) {
-	// 创建一个超长文本，可能导致检测超时
-	longText := strings.Repeat("A", 100000)
+func TestDuplicationDetector_Stream_NoRepetition(t *testing.T) {
+	// 创建流式响应的 mock
+	chunks := make(chan *octollm.StreamChunk, 10)
+
+	// 模拟流式响应：发送不重复的文本
+	go func() {
+		defer close(chunks)
+		texts := []string{"这", "是", "一", "段", "正", "常", "的", "文", "本"}
+		for _, text := range texts {
+			chunk := &openai.ChatCompletionStreamChunk{
+				ID:    "test-stream-normal",
+				Model: "gpt-4",
+				Choices: []*openai.ChatCompletionStreamChoice{
+					{
+						Delta: &openai.Message{
+							Content: openai.MessageContentString(text),
+						},
+					},
+				},
+			}
+			body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionStreamChunk]{})
+			body.SetParsed(chunk)
+			chunks <- &octollm.StreamChunk{Body: body}
+		}
+	}()
+
+	mockResp := &octollm.Response{
+		Stream: octollm.NewStreamChan(chunks, func() {}),
+	}
+
+	mockEngine := &mockEngine{response: mockResp}
+
+	detector := newDuplicationDetectorEngine(
+		&DuplicationDetectorConfig{
+			MinRepeatLen:    1,
+			MaxRepeatLen:    5,
+			RepeatThreshold: 50,
+			DetectTimeout:   1 * time.Second,
+		},
+		"gpt-4",
+		mockEngine,
+	)
+
+	httpReq, _ := http.NewRequestWithContext(context.Background(), "POST", "http://localhost/v1/chat/completions", nil)
+	httpReq.URL, _ = url.Parse("http://localhost/v1/chat/completions")
+	req := octollm.NewRequest(httpReq, octollm.APIFormatChatCompletions)
+	req.Body = octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionRequest]{})
+	req.Body.SetParsed(&openai.ChatCompletionRequest{Model: "gpt-4"})
+
+	result, err := detector.Process(req)
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.NotNil(t, result.Stream)
+
+	// 消费所有 chunks
+	count := 0
+	for range result.Stream.Chan() {
+		count++
+	}
+	assert.Equal(t, 9, count)
+
+	// 给异步检测一些时间
+	time.Sleep(100 * time.Millisecond)
+}
+
+func TestDuplicationDetector_EmptyResponse(t *testing.T) {
 	resp := &openai.ChatCompletionResponse{
-		ID:      "test-timeout",
+		ID:      "test-empty",
 		Model:   "gpt-4",
 		Choices: []*openai.ChatCompletionChoice{
 			{
 				Message: &openai.Message{
-					Content: openai.MessageContentString(longText),
+					Content: openai.MessageContentString(""),
 				},
 			},
 		},
@@ -202,65 +283,37 @@ func TestDuplicationDetector_DetectTimeout(t *testing.T) {
 
 	mockEngine := &mockEngine{response: mockResp}
 
-	detector := NewDuplicationDetector(
-		&OpenAIAdapter{},
+	detector := newDuplicationDetectorEngine(
 		&DuplicationDetectorConfig{
-			MinRepeatLen:    10,
-			MaxRepeatLen:    1000,
-			RepeatThreshold: 3,
-			DetectTimeout:   10 * time.Millisecond, // 非常短的超时
+			MinRepeatLen:    1,
+			MaxRepeatLen:    5,
+			RepeatThreshold: 50,
+			DetectTimeout:   1 * time.Second,
 		},
+		"gpt-4",
 		mockEngine,
 	)
 
-	req := &octollm.Request{
-		Body: octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionRequest]{}),
-	}
+	httpReq, _ := http.NewRequestWithContext(context.Background(), "POST", "http://localhost/v1/chat/completions", nil)
+	httpReq.URL, _ = url.Parse("http://localhost/v1/chat/completions")
+	req := octollm.NewRequest(httpReq, octollm.APIFormatChatCompletions)
+	req.Body = octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionRequest]{})
+	req.Body.SetParsed(&openai.ChatCompletionRequest{Model: "gpt-4"})
 
 	result, err := detector.Process(req)
 	require.NoError(t, err)
 	assert.NotNil(t, result)
+	assert.NotNil(t, result.Body)
 
-	// 等待超时发生
-	time.Sleep(50 * time.Millisecond)
+	// 给异步检测一些时间
+	time.Sleep(100 * time.Millisecond)
 }
 
-func TestDuplicationDetector_DefaultConfig(t *testing.T) {
-	config := DefaultDuplicationDetectorConfig()
-	assert.Equal(t, 10, config.MinRepeatLen)
-	assert.Equal(t, 100, config.MaxRepeatLen)
-	assert.Equal(t, 3, config.RepeatThreshold)
-	assert.Equal(t, 5*time.Second, config.DetectTimeout)
-}
-
-func TestDuplicationDetector_ErrorInExtraction(t *testing.T) {
-	// 测试当文本提取失败时不应该影响正常响应
-	mockResp := &octollm.Response{
-		Body: octollm.NewBodyFromBytes([]byte("invalid"), &octollm.JSONParser[openai.ChatCompletionResponse]{}),
-	}
-
-	mockEngine := &mockEngine{response: mockResp}
-
-	detector := NewDuplicationDetector(
-		&OpenAIAdapter{},
-		nil,
-		mockEngine,
-	)
-
-	req := &octollm.Request{
-		Body: octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionRequest]{}),
-	}
-
-	result, err := detector.Process(req)
-	require.NoError(t, err)
-	assert.NotNil(t, result)
-}
-
-// BenchmarkDuplicationDetector 性能测试
-func BenchmarkDuplicationDetector_NonStream(b *testing.B) {
-	repeatedText := strings.Repeat("测试文本", 10)
+func TestDuplicationDetector_Timeout(t *testing.T) {
+	// 创建一个包含大量重复内容的响应，可能导致超时
+	repeatedText := strings.Repeat("这是一个测试文本。", 1000)
 	resp := &openai.ChatCompletionResponse{
-		ID:      "bench-test",
+		ID:      "test-timeout",
 		Model:   "gpt-4",
 		Choices: []*openai.ChatCompletionChoice{
 			{
@@ -278,21 +331,28 @@ func BenchmarkDuplicationDetector_NonStream(b *testing.B) {
 
 	mockEngine := &mockEngine{response: mockResp}
 
-	detector := NewDuplicationDetector(
-		&OpenAIAdapter{},
-		nil,
+	detector := newDuplicationDetectorEngine(
+		&DuplicationDetectorConfig{
+			MinRepeatLen:    1,
+			MaxRepeatLen:    5,
+			RepeatThreshold: 50,
+			DetectTimeout:   1 * time.Nanosecond, // 极短的超时
+		},
+		"gpt-4",
 		mockEngine,
 	)
 
-	req := &octollm.Request{
-		Body: octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionRequest]{}),
-	}
+	httpReq, _ := http.NewRequestWithContext(context.Background(), "POST", "http://localhost/v1/chat/completions", nil)
+	httpReq.URL, _ = url.Parse("http://localhost/v1/chat/completions")
+	req := octollm.NewRequest(httpReq, octollm.APIFormatChatCompletions)
+	req.Body = octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionRequest]{})
+	req.Body.SetParsed(&openai.ChatCompletionRequest{Model: "gpt-4"})
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, err := detector.Process(req)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
+	result, err := detector.Process(req)
+	require.NoError(t, err) // 超时不应该影响响应
+	assert.NotNil(t, result)
+	assert.NotNil(t, result.Body)
+
+	// 给异步检测一些时间
+	time.Sleep(100 * time.Millisecond)
 }

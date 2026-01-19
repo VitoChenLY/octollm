@@ -31,11 +31,12 @@ type Model struct {
 
 // DuplicationDetectionConfig 重复检测配置
 type DuplicationDetectionConfig struct {
-	Enabled         bool `json:"enabled" yaml:"enabled"`                   // 是否启用
-	MinRepeatLen    int  `json:"min_repeat_len" yaml:"min_repeat_len"`     // 最小重复长度
-	MaxRepeatLen    int  `json:"max_repeat_len" yaml:"max_repeat_len"`     // 最大重复长度
-	RepeatThreshold int  `json:"repeat_threshold" yaml:"repeat_threshold"` // 重复次数阈值
-	TimeoutSeconds  int  `json:"timeout_seconds" yaml:"timeout_seconds"`   // 检测超时（秒）
+	Enabled             bool `json:"enabled" yaml:"enabled"`                                 // 是否启用
+	MinRepeatLen        int  `json:"min_repeat_len" yaml:"min_repeat_len"`                   // 最小重复长度
+	MaxRepeatLen        int  `json:"max_repeat_len" yaml:"max_repeat_len"`                   // 最大重复长度
+	RepeatThreshold     int  `json:"repeat_threshold" yaml:"repeat_threshold"`               // 重复次数阈值
+	TimeoutSeconds      int  `json:"timeout_seconds" yaml:"timeout_seconds"`                 // 检测超时（秒）
+	ModerateStreamEvery int  `json:"moderate_stream_every" yaml:"moderate_stream_every"`     // 流式检测频率（每N个chunks检测一次）
 }
 
 type Backend struct {

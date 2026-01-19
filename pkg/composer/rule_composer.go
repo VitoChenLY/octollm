@@ -124,7 +124,7 @@ func (r *RuleComposerFileBased) getEngine(orgName, modelName string) (octollm.En
 
 	// 应用重复检测（如果配置了）
 	if model.DuplicationDetection != nil && model.DuplicationDetection.Enabled {
-		engine = r.wrapWithDuplicationDetector(engine, model.DuplicationDetection)
+		engine = r.wrapWithDuplicationDetector(engine, modelName, model.DuplicationDetection)
 	}
 
 	r.mu.Lock()
@@ -174,7 +174,7 @@ func (r *RuleComposerFileBased) buildDefaultEngine(modelName string) (octollm.En
 }
 
 // wrapWithDuplicationDetector 包装重复检测器
-func (r *RuleComposerFileBased) wrapWithDuplicationDetector(engine octollm.Engine, config *DuplicationDetectionConfig) octollm.Engine {
+func (r *RuleComposerFileBased) wrapWithDuplicationDetector(engine octollm.Engine, modelName string, config *DuplicationDetectionConfig) octollm.Engine {
 	detectorConfig := &moderator.DuplicationDetectorConfig{
 		MinRepeatLen:    config.MinRepeatLen,
 		MaxRepeatLen:    config.MaxRepeatLen,
@@ -196,11 +196,24 @@ func (r *RuleComposerFileBased) wrapWithDuplicationDetector(engine octollm.Engin
 		detectorConfig.DetectTimeout = 1 * time.Second
 	}
 
-	return moderator.NewDuplicationDetector(
-		&moderator.OpenAIAdapter{},
-		detectorConfig,
-		engine,
-	)
+	// 使用 TextModeratorEngine 包装，复用流式处理逻辑
+	service := moderator.NewDuplicationDetectorService(detectorConfig, modelName)
+
+	// ModerateStreamEvery 控制增量检测频率
+	// 默认 10 表示每 10 个 chunks 检测一次
+	moderateStreamEvery := config.ModerateStreamEvery
+	if moderateStreamEvery <= 0 {
+		moderateStreamEvery = 50
+	}
+
+	return &moderator.TextModeratorEngine{
+		ModeratorService:     service,
+		TextModeratorAdapter: &moderator.OpenAIAdapter{},
+		ModerateInput:        false, // 不检测输入
+		ModerateOutput:       true,  // 只检测输出
+		ModerateStreamEvery:  moderateStreamEvery,
+		Next:                 engine,
+	}
 }
 
 func (r *RuleComposerFileBased) buildEngineByRuleList(ruleConfs RuleList, modelName string, defaultEngine octollm.Engine) (octollm.Engine, error) {

@@ -137,15 +137,36 @@ func (e *TextModeratorEngine) Process(req *octollm.Request) (*octollm.Response, 
 				chunkBuffer = make([]*octollm.StreamChunk, 0, moderateEvery)
 			}
 		}
+
+		// Handle remaining chunks after stream ends
+		if moderationFailedErr == nil && len(chunkBuffer) > 0 {
+			logrus.WithContext(ctx).Debugf("[moderate] processing %d remaining chunks", len(chunkBuffer))
+			if err := e.ModeratorService.Allow(ctx, textBuffer); err != nil {
+				logrus.WithContext(ctx).Debugf("moderate remaining stream chunks error: %s", err)
+				moderationFailedErr = fmt.Errorf("%w: %w", ErrOutputNotAllowed, err)
+			} else {
+				// Send remaining chunks if moderation passed
+				for _, chunk := range chunkBuffer {
+					select {
+					case newChunks <- chunk:
+					case <-ctx.Done():
+						return
+					}
+				}
+			}
+		}
+
 		if moderationFailedErr != nil {
 			// get replacement chunk
 			originalChunks.Close()
-			replacement := e.TextModeratorAdapter.GetReplacementBody(req.Context(), chunkBuffer[0].Body)
-			if replacement != nil {
-				select {
-				case newChunks <- &octollm.StreamChunk{Body: replacement}:
-				case <-ctx.Done():
-					return
+			if len(chunkBuffer) > 0 {
+				replacement := e.TextModeratorAdapter.GetReplacementBody(req.Context(), chunkBuffer[0].Body)
+				if replacement != nil {
+					select {
+					case newChunks <- &octollm.StreamChunk{Body: replacement}:
+					case <-ctx.Done():
+						return
+					}
 				}
 			}
 		}
