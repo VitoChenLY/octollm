@@ -26,18 +26,17 @@ type Model struct {
 	ResponseRewrites    *engines.RewritePolicy `json:"response_rewrites" yaml:"response_rewrites"`
 	StreamChunkRewrites *engines.RewritePolicy `json:"stream_chunk_rewrites" yaml:"stream_chunk_rewrites"`
 
-	DuplicationDetection *DuplicationDetectionConfig `json:"duplication_detection" yaml:"duplication_detection"`
+	RepeatDetection *RepeatDetectionConfig `json:"repeat_detection" yaml:"repeat_detection"`
 }
 
-// DuplicationDetectionConfig 重复检测配置
-type DuplicationDetectionConfig struct {
-	Enabled             bool   `json:"enabled" yaml:"enabled"`                             // 是否启用
-	MinRepeatLen        int    `json:"min_repeat_len" yaml:"min_repeat_len"`               // 最小重复长度
-	MaxRepeatLen        int    `json:"max_repeat_len" yaml:"max_repeat_len"`               // 最大重复长度
-	RepeatThreshold     int    `json:"repeat_threshold" yaml:"repeat_threshold"`           // 重复次数阈值
-	BlockOnDetect       bool   `json:"block_on_detect" yaml:"block_on_detect"`             // 是否拦截重复内容（默认 false，只记录不拦截）
-	BlockMessage        string `json:"block_message" yaml:"block_message"`                 // 拦截时返回的消息
-	ModerateStreamEvery int    `json:"moderate_stream_every" yaml:"moderate_stream_every"` // 流式检测频率（每N个chunks检测一次）
+type RepeatDetectionConfig struct {
+	Enabled             bool   `json:"enabled" yaml:"enabled"`                             // whether to enable repeat detection
+	MinRepeatLen        int    `json:"min_repeat_len" yaml:"min_repeat_len"`               // minimum repeat length
+	MaxRepeatLen        int    `json:"max_repeat_len" yaml:"max_repeat_len"`               // maximum repeat length
+	RepeatThreshold     int    `json:"repeat_threshold" yaml:"repeat_threshold"`           // repeat threshold
+	BlockOnDetect       bool   `json:"block_on_detect" yaml:"block_on_detect"`             // whether to block on detect (default false, only log no block)
+	BlockMessage        string `json:"block_message" yaml:"block_message"`                 // block message
+	ModerateStreamEvery int    `json:"moderate_stream_every" yaml:"moderate_stream_every"` // stream detection frequency (every N chunks)
 }
 
 type Backend struct {

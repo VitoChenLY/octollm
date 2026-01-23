@@ -6,7 +6,7 @@ models:
         url_path_chat: /v1/chat/completions
         # if not set, read from env var OCTOLLM_API_KEY
         # api_key: sk-xxxx
-    duplication_detection:
+    repeat_detection:
         enabled: true
         min_repeat_len: 1
         max_repeat_len: 5

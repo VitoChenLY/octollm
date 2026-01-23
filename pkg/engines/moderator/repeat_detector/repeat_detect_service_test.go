@@ -1,4 +1,4 @@
-package moderator
+package repeat_detector
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/infinigence/octollm/pkg/engines/moderator"
 	"github.com/infinigence/octollm/pkg/octollm"
 	"github.com/infinigence/octollm/pkg/types/openai"
 	"github.com/stretchr/testify/assert"
@@ -24,11 +25,11 @@ func (m *mockEngine) Process(req *octollm.Request) (*octollm.Response, error) {
 }
 
 // 辅助函数：创建使用 TextModeratorEngine 的重复检测器
-func newDuplicationDetectorEngine(config *DuplicationDetectorConfig, modelName string, next octollm.Engine) *TextModeratorEngine {
-	service := NewDuplicationDetectorService(config, modelName)
-	return &TextModeratorEngine{
+func newRepeatDetectorEngine(config *RepeatDetectorConfig, modelName string, next octollm.Engine) *moderator.TextModeratorEngine {
+	service := NewRepeatDetectorService(config, modelName)
+	return &moderator.TextModeratorEngine{
 		ModeratorService:     service,
-		TextModeratorAdapter: NewUniversalAdapter(), // 使用通用 adapter
+		TextModeratorAdapter: moderator.NewUniversalAdapter(), // 使用通用 adapter
 		ModerateInput:        false,
 		ModerateOutput:       true,
 		ModerateStreamEvery:  10,
@@ -36,7 +37,7 @@ func newDuplicationDetectorEngine(config *DuplicationDetectorConfig, modelName s
 	}
 }
 
-func TestDuplicationDetector_NonStream_WithRepetition(t *testing.T) {
+func TestRepeatDetector_NonStream_WithRepetition(t *testing.T) {
 	// 创建一个包含重复内容的响应
 	repeatedText := strings.Repeat("这是一个测试文本。", 5) // 重复 5 次
 	resp := &openai.ChatCompletionResponse{
@@ -58,8 +59,8 @@ func TestDuplicationDetector_NonStream_WithRepetition(t *testing.T) {
 
 	mockEngine := &mockEngine{response: mockResp}
 
-	detector := newDuplicationDetectorEngine(
-		&DuplicationDetectorConfig{
+	detector := newRepeatDetectorEngine(
+		&RepeatDetectorConfig{
 			MinRepeatLen:    5,
 			MaxRepeatLen:    50,
 			RepeatThreshold: 3,
@@ -81,7 +82,7 @@ func TestDuplicationDetector_NonStream_WithRepetition(t *testing.T) {
 	assert.NotNil(t, result.Body)
 }
 
-func TestDuplicationDetector_NonStream_NoRepetition(t *testing.T) {
+func TestRepeatDetector_NonStream_NoRepetition(t *testing.T) {
 	// 创建一个不包含重复的响应
 	normalText := "这是一段正常的文本，没有任何重复的内容。"
 	resp := &openai.ChatCompletionResponse{
@@ -103,8 +104,8 @@ func TestDuplicationDetector_NonStream_NoRepetition(t *testing.T) {
 
 	mockEngine := &mockEngine{response: mockResp}
 
-	detector := newDuplicationDetectorEngine(
-		&DuplicationDetectorConfig{
+	detector := newRepeatDetectorEngine(
+		&RepeatDetectorConfig{
 			MinRepeatLen:    5,
 			MaxRepeatLen:    50,
 			RepeatThreshold: 3,
@@ -126,7 +127,7 @@ func TestDuplicationDetector_NonStream_NoRepetition(t *testing.T) {
 	assert.NotNil(t, result.Body)
 }
 
-func TestDuplicationDetector_Stream_WithRepetition(t *testing.T) {
+func TestRepeatDetector_Stream_WithRepetition(t *testing.T) {
 	// 创建流式响应的 mock
 	chunks := make(chan *octollm.StreamChunk, 10)
 
@@ -158,8 +159,8 @@ func TestDuplicationDetector_Stream_WithRepetition(t *testing.T) {
 
 	mockEngine := &mockEngine{response: mockResp}
 
-	detector := newDuplicationDetectorEngine(
-		&DuplicationDetectorConfig{
+	detector := newRepeatDetectorEngine(
+		&RepeatDetectorConfig{
 			MinRepeatLen:    1,
 			MaxRepeatLen:    5,
 			RepeatThreshold: 50,
@@ -188,7 +189,7 @@ func TestDuplicationDetector_Stream_WithRepetition(t *testing.T) {
 	assert.Equal(t, 60, count)
 }
 
-func TestDuplicationDetector_Stream_NoRepetition(t *testing.T) {
+func TestRepeatDetector_Stream_NoRepetition(t *testing.T) {
 	// 创建流式响应的 mock
 	chunks := make(chan *octollm.StreamChunk, 10)
 
@@ -220,8 +221,8 @@ func TestDuplicationDetector_Stream_NoRepetition(t *testing.T) {
 
 	mockEngine := &mockEngine{response: mockResp}
 
-	detector := newDuplicationDetectorEngine(
-		&DuplicationDetectorConfig{
+	detector := newRepeatDetectorEngine(
+		&RepeatDetectorConfig{
 			MinRepeatLen:    1,
 			MaxRepeatLen:    5,
 			RepeatThreshold: 50,
@@ -250,7 +251,7 @@ func TestDuplicationDetector_Stream_NoRepetition(t *testing.T) {
 	assert.Equal(t, 9, count)
 }
 
-func TestDuplicationDetector_EmptyResponse(t *testing.T) {
+func TestRepeatDetector_EmptyResponse(t *testing.T) {
 	resp := &openai.ChatCompletionResponse{
 		ID:    "test-empty",
 		Model: "gpt-4",
@@ -270,8 +271,8 @@ func TestDuplicationDetector_EmptyResponse(t *testing.T) {
 
 	mockEngine := &mockEngine{response: mockResp}
 
-	detector := newDuplicationDetectorEngine(
-		&DuplicationDetectorConfig{
+	detector := newRepeatDetectorEngine(
+		&RepeatDetectorConfig{
 			MinRepeatLen:    1,
 			MaxRepeatLen:    5,
 			RepeatThreshold: 50,
@@ -293,7 +294,7 @@ func TestDuplicationDetector_EmptyResponse(t *testing.T) {
 	assert.NotNil(t, result.Body)
 }
 
-func TestDuplicationDetector_BlockOnDetect(t *testing.T) {
+func TestRepeatDetector_BlockOnDetect(t *testing.T) {
 	// 创建一个包含重复内容的响应
 	repeatedText := strings.Repeat("ABC", 60) // 重复 60 次
 	resp := &openai.ChatCompletionResponse{
@@ -317,9 +318,9 @@ func TestDuplicationDetector_BlockOnDetect(t *testing.T) {
 
 	// 测试拦截功能
 	blockMessage := "内容被拦截：检测到重复"
-	detector := &TextModeratorEngine{
-		ModeratorService: NewDuplicationDetectorService(
-			&DuplicationDetectorConfig{
+	detector := &moderator.TextModeratorEngine{
+		ModeratorService: NewRepeatDetectorService(
+			&RepeatDetectorConfig{
 				MinRepeatLen:    1,
 				MaxRepeatLen:    5,
 				RepeatThreshold: 50,
@@ -328,7 +329,7 @@ func TestDuplicationDetector_BlockOnDetect(t *testing.T) {
 			},
 			"gpt-4",
 		),
-		TextModeratorAdapter: NewUniversalAdapterWithConfig(
+		TextModeratorAdapter: moderator.NewUniversalAdapterWithConfig(
 			blockMessage,                // 流式拦截消息
 			blockMessage,                // 非流式拦截消息
 			"repeated_content_detected", // finish_reason
@@ -362,7 +363,7 @@ func TestDuplicationDetector_BlockOnDetect(t *testing.T) {
 	assert.Equal(t, "repeated_content_detected", openaiResp.Choices[0].FinishReason)
 }
 
-func TestDuplicationDetector_BlockOnDetect_Stream(t *testing.T) {
+func TestRepeatDetector_BlockOnDetect_Stream(t *testing.T) {
 	// 创建流式响应的 mock
 	chunks := make(chan *octollm.StreamChunk, 70)
 
@@ -395,9 +396,9 @@ func TestDuplicationDetector_BlockOnDetect_Stream(t *testing.T) {
 	mockEngine := &mockEngine{response: mockResp}
 
 	blockMessage := "流式内容被拦截：检测到重复"
-	detector := &TextModeratorEngine{
-		ModeratorService: NewDuplicationDetectorService(
-			&DuplicationDetectorConfig{
+	detector := &moderator.TextModeratorEngine{
+		ModeratorService: NewRepeatDetectorService(
+			&RepeatDetectorConfig{
 				MinRepeatLen:    1,
 				MaxRepeatLen:    5,
 				RepeatThreshold: 50,
@@ -406,7 +407,7 @@ func TestDuplicationDetector_BlockOnDetect_Stream(t *testing.T) {
 			},
 			"gpt-4",
 		),
-		TextModeratorAdapter: NewUniversalAdapterWithConfig(
+		TextModeratorAdapter: moderator.NewUniversalAdapterWithConfig(
 			blockMessage,                // 流式拦截消息
 			blockMessage,                // 非流式拦截消息
 			"repeated_content_detected", // finish_reason

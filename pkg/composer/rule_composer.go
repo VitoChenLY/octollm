@@ -13,6 +13,7 @@ import (
 
 	loadbalancer "github.com/infinigence/octollm/pkg/engines/load-balancer"
 	"github.com/infinigence/octollm/pkg/engines/moderator"
+	"github.com/infinigence/octollm/pkg/engines/moderator/repeat_detector"
 	ruleengine "github.com/infinigence/octollm/pkg/engines/rule-engine"
 	"github.com/infinigence/octollm/pkg/errutils"
 	"github.com/infinigence/octollm/pkg/octollm"
@@ -123,9 +124,8 @@ func (r *RuleComposerFileBased) getEngine(orgName, modelName string) (octollm.En
 		}
 	}
 
-	// 应用重复检测（如果配置了）
-	if model.DuplicationDetection != nil && model.DuplicationDetection.Enabled {
-		engine = r.wrapWithDuplicationDetector(engine, modelName, model.DuplicationDetection)
+	if model.RepeatDetection != nil && model.RepeatDetection.Enabled {
+		engine = r.wrapWithRepeatDetector(engine, modelName, model.RepeatDetection)
 	}
 
 	r.mu.Lock()
@@ -174,9 +174,8 @@ func (r *RuleComposerFileBased) buildDefaultEngine(modelName string) (octollm.En
 	return lb, nil
 }
 
-// wrapWithDuplicationDetector 包装重复检测器
-func (r *RuleComposerFileBased) wrapWithDuplicationDetector(engine octollm.Engine, modelName string, config *DuplicationDetectionConfig) octollm.Engine {
-	detectorConfig := &moderator.DuplicationDetectorConfig{
+func (r *RuleComposerFileBased) wrapWithRepeatDetector(engine octollm.Engine, modelName string, config *RepeatDetectionConfig) octollm.Engine {
+	detectorConfig := &repeat_detector.RepeatDetectorConfig{
 		MinRepeatLen:    config.MinRepeatLen,
 		MaxRepeatLen:    config.MaxRepeatLen,
 		RepeatThreshold: config.RepeatThreshold,
@@ -198,18 +197,15 @@ func (r *RuleComposerFileBased) wrapWithDuplicationDetector(engine octollm.Engin
 		detectorConfig.BlockMessage = "Repeated content detected, please adjust and try again. "
 	}
 
-	// 使用 TextModeratorEngine 包装，复用流式处理逻辑
-	service := moderator.NewDuplicationDetectorService(detectorConfig, modelName)
+	service := repeat_detector.NewRepeatDetectorService(detectorConfig, modelName)
 
-	// ModerateStreamEvery 控制增量检测频率
 	moderateStreamEvery := config.ModerateStreamEvery
 	if moderateStreamEvery <= 0 {
 		moderateStreamEvery = 50
 	}
 
-	// 创建带拦截消息的 Universal Adapter
 	adapter := moderator.NewUniversalAdapterWithConfig(
-		detectorConfig.BlockMessage, // 流式和非流式使用相同的拦截消息
+		detectorConfig.BlockMessage, // streaming and non-streaming use the same block message
 		detectorConfig.BlockMessage,
 		"repeated_content_detected", // finish_reason
 	)
@@ -217,8 +213,8 @@ func (r *RuleComposerFileBased) wrapWithDuplicationDetector(engine octollm.Engin
 	return &moderator.TextModeratorEngine{
 		ModeratorService:     service,
 		TextModeratorAdapter: adapter,
-		ModerateInput:        false, // 不检测输入
-		ModerateOutput:       true,  // 只检测输出
+		ModerateInput:        false, // do not moderate input
+		ModerateOutput:       true,  // only moderate output
 		ModerateStreamEvery:  moderateStreamEvery,
 		Next:                 engine,
 	}
