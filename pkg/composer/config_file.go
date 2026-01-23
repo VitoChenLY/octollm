@@ -31,12 +31,13 @@ type Model struct {
 
 // DuplicationDetectionConfig 重复检测配置
 type DuplicationDetectionConfig struct {
-	Enabled             bool `json:"enabled" yaml:"enabled"`                             // 是否启用
-	MinRepeatLen        int  `json:"min_repeat_len" yaml:"min_repeat_len"`               // 最小重复长度
-	MaxRepeatLen        int  `json:"max_repeat_len" yaml:"max_repeat_len"`               // 最大重复长度
-	RepeatThreshold     int  `json:"repeat_threshold" yaml:"repeat_threshold"`           // 重复次数阈值
-	TimeoutSeconds      int  `json:"timeout_seconds" yaml:"timeout_seconds"`             // 检测超时（秒）
-	ModerateStreamEvery int  `json:"moderate_stream_every" yaml:"moderate_stream_every"` // 流式检测频率（每N个chunks检测一次）
+	Enabled             bool   `json:"enabled" yaml:"enabled"`                             // 是否启用
+	MinRepeatLen        int    `json:"min_repeat_len" yaml:"min_repeat_len"`               // 最小重复长度
+	MaxRepeatLen        int    `json:"max_repeat_len" yaml:"max_repeat_len"`               // 最大重复长度
+	RepeatThreshold     int    `json:"repeat_threshold" yaml:"repeat_threshold"`           // 重复次数阈值
+	BlockOnDetect       bool   `json:"block_on_detect" yaml:"block_on_detect"`             // 是否拦截重复内容（默认 false，只记录不拦截）
+	BlockMessage        string `json:"block_message" yaml:"block_message"`                 // 拦截时返回的消息
+	ModerateStreamEvery int    `json:"moderate_stream_every" yaml:"moderate_stream_every"` // 流式检测频率（每N个chunks检测一次）
 }
 
 type Backend struct {

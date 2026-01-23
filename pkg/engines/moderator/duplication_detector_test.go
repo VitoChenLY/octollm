@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/infinigence/octollm/pkg/octollm"
 	"github.com/infinigence/octollm/pkg/types/openai"
@@ -29,7 +28,7 @@ func newDuplicationDetectorEngine(config *DuplicationDetectorConfig, modelName s
 	service := NewDuplicationDetectorService(config, modelName)
 	return &TextModeratorEngine{
 		ModeratorService:     service,
-		TextModeratorAdapter: &OpenAIAdapter{},
+		TextModeratorAdapter: NewUniversalAdapter(), // 使用通用 adapter
 		ModerateInput:        false,
 		ModerateOutput:       true,
 		ModerateStreamEvery:  10,
@@ -41,8 +40,8 @@ func TestDuplicationDetector_NonStream_WithRepetition(t *testing.T) {
 	// 创建一个包含重复内容的响应
 	repeatedText := strings.Repeat("这是一个测试文本。", 5) // 重复 5 次
 	resp := &openai.ChatCompletionResponse{
-		ID:      "test-123",
-		Model:   "gpt-4",
+		ID:    "test-123",
+		Model: "gpt-4",
 		Choices: []*openai.ChatCompletionChoice{
 			{
 				Message: &openai.Message{
@@ -64,7 +63,7 @@ func TestDuplicationDetector_NonStream_WithRepetition(t *testing.T) {
 			MinRepeatLen:    5,
 			MaxRepeatLen:    50,
 			RepeatThreshold: 3,
-			DetectTimeout:   1 * time.Second,
+			BlockOnDetect:   false, // 不拦截，只记录日志
 		},
 		"gpt-4",
 		mockEngine,
@@ -80,17 +79,14 @@ func TestDuplicationDetector_NonStream_WithRepetition(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.NotNil(t, result.Body)
-
-	// 给异步检测一些时间
-	time.Sleep(100 * time.Millisecond)
 }
 
 func TestDuplicationDetector_NonStream_NoRepetition(t *testing.T) {
 	// 创建一个不包含重复的响应
 	normalText := "这是一段正常的文本，没有任何重复的内容。"
 	resp := &openai.ChatCompletionResponse{
-		ID:      "test-456",
-		Model:   "gpt-4",
+		ID:    "test-456",
+		Model: "gpt-4",
 		Choices: []*openai.ChatCompletionChoice{
 			{
 				Message: &openai.Message{
@@ -112,7 +108,7 @@ func TestDuplicationDetector_NonStream_NoRepetition(t *testing.T) {
 			MinRepeatLen:    5,
 			MaxRepeatLen:    50,
 			RepeatThreshold: 3,
-			DetectTimeout:   1 * time.Second,
+			BlockOnDetect:   false, // 不拦截，只记录日志
 		},
 		"gpt-4",
 		mockEngine,
@@ -128,9 +124,6 @@ func TestDuplicationDetector_NonStream_NoRepetition(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.NotNil(t, result.Body)
-
-	// 给异步检测一些时间
-	time.Sleep(100 * time.Millisecond)
 }
 
 func TestDuplicationDetector_Stream_WithRepetition(t *testing.T) {
@@ -170,7 +163,7 @@ func TestDuplicationDetector_Stream_WithRepetition(t *testing.T) {
 			MinRepeatLen:    1,
 			MaxRepeatLen:    5,
 			RepeatThreshold: 50,
-			DetectTimeout:   1 * time.Second,
+			BlockOnDetect:   false, // 不拦截，只记录日志
 		},
 		"gpt-4",
 		mockEngine,
@@ -193,9 +186,6 @@ func TestDuplicationDetector_Stream_WithRepetition(t *testing.T) {
 		count++
 	}
 	assert.Equal(t, 60, count)
-
-	// 给异步检测一些时间
-	time.Sleep(100 * time.Millisecond)
 }
 
 func TestDuplicationDetector_Stream_NoRepetition(t *testing.T) {
@@ -235,7 +225,7 @@ func TestDuplicationDetector_Stream_NoRepetition(t *testing.T) {
 			MinRepeatLen:    1,
 			MaxRepeatLen:    5,
 			RepeatThreshold: 50,
-			DetectTimeout:   1 * time.Second,
+			BlockOnDetect:   false, // 不拦截，只记录日志
 		},
 		"gpt-4",
 		mockEngine,
@@ -258,15 +248,12 @@ func TestDuplicationDetector_Stream_NoRepetition(t *testing.T) {
 		count++
 	}
 	assert.Equal(t, 9, count)
-
-	// 给异步检测一些时间
-	time.Sleep(100 * time.Millisecond)
 }
 
 func TestDuplicationDetector_EmptyResponse(t *testing.T) {
 	resp := &openai.ChatCompletionResponse{
-		ID:      "test-empty",
-		Model:   "gpt-4",
+		ID:    "test-empty",
+		Model: "gpt-4",
 		Choices: []*openai.ChatCompletionChoice{
 			{
 				Message: &openai.Message{
@@ -288,7 +275,7 @@ func TestDuplicationDetector_EmptyResponse(t *testing.T) {
 			MinRepeatLen:    1,
 			MaxRepeatLen:    5,
 			RepeatThreshold: 50,
-			DetectTimeout:   1 * time.Second,
+			BlockOnDetect:   false, // 不拦截，只记录日志
 		},
 		"gpt-4",
 		mockEngine,
@@ -304,17 +291,14 @@ func TestDuplicationDetector_EmptyResponse(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.NotNil(t, result.Body)
-
-	// 给异步检测一些时间
-	time.Sleep(100 * time.Millisecond)
 }
 
-func TestDuplicationDetector_Timeout(t *testing.T) {
-	// 创建一个包含大量重复内容的响应，可能导致超时
-	repeatedText := strings.Repeat("这是一个测试文本。", 1000)
+func TestDuplicationDetector_BlockOnDetect(t *testing.T) {
+	// 创建一个包含重复内容的响应
+	repeatedText := strings.Repeat("ABC", 60) // 重复 60 次
 	resp := &openai.ChatCompletionResponse{
-		ID:      "test-timeout",
-		Model:   "gpt-4",
+		ID:    "test-block",
+		Model: "gpt-4",
 		Choices: []*openai.ChatCompletionChoice{
 			{
 				Message: &openai.Message{
@@ -331,16 +315,29 @@ func TestDuplicationDetector_Timeout(t *testing.T) {
 
 	mockEngine := &mockEngine{response: mockResp}
 
-	detector := newDuplicationDetectorEngine(
-		&DuplicationDetectorConfig{
-			MinRepeatLen:    1,
-			MaxRepeatLen:    5,
-			RepeatThreshold: 50,
-			DetectTimeout:   1 * time.Nanosecond, // 极短的超时
-		},
-		"gpt-4",
-		mockEngine,
-	)
+	// 测试拦截功能
+	blockMessage := "内容被拦截：检测到重复"
+	detector := &TextModeratorEngine{
+		ModeratorService: NewDuplicationDetectorService(
+			&DuplicationDetectorConfig{
+				MinRepeatLen:    1,
+				MaxRepeatLen:    5,
+				RepeatThreshold: 50,
+				BlockOnDetect:   true, // 启用拦截
+				BlockMessage:    blockMessage,
+			},
+			"gpt-4",
+		),
+		TextModeratorAdapter: NewUniversalAdapterWithConfig(
+			blockMessage,                // 流式拦截消息
+			blockMessage,                // 非流式拦截消息
+			"repeated_content_detected", // finish_reason
+		),
+		ModerateInput:       false,
+		ModerateOutput:      true,
+		ModerateStreamEvery: 10,
+		Next:                mockEngine,
+	}
 
 	httpReq, _ := http.NewRequestWithContext(context.Background(), "POST", "http://localhost/v1/chat/completions", nil)
 	httpReq.URL, _ = url.Parse("http://localhost/v1/chat/completions")
@@ -349,10 +346,114 @@ func TestDuplicationDetector_Timeout(t *testing.T) {
 	req.Body.SetParsed(&openai.ChatCompletionRequest{Model: "gpt-4"})
 
 	result, err := detector.Process(req)
-	require.NoError(t, err) // 超时不应该影响响应
-	assert.NotNil(t, result)
-	assert.NotNil(t, result.Body)
+	// 应该返回成功，但内容被替换为拦截消息
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Body)
 
-	// 给异步检测一些时间
-	time.Sleep(100 * time.Millisecond)
+	// 验证返回的是替换后的内容
+	parsedResp, err := result.Body.Parsed()
+	require.NoError(t, err)
+
+	openaiResp, ok := parsedResp.(*openai.ChatCompletionResponse)
+	require.True(t, ok)
+	require.Len(t, openaiResp.Choices, 1)
+	assert.Equal(t, blockMessage, openaiResp.Choices[0].Message.Content.ExtractText())
+	assert.Equal(t, "repeated_content_detected", openaiResp.Choices[0].FinishReason)
+}
+
+func TestDuplicationDetector_BlockOnDetect_Stream(t *testing.T) {
+	// 创建流式响应的 mock
+	chunks := make(chan *octollm.StreamChunk, 70)
+
+	// 模拟流式响应：发送重复的文本
+	go func() {
+		defer close(chunks)
+		repeatedText := "重复"
+		for i := 0; i < 60; i++ { // 发送 60 次，会触发拦截
+			chunk := &openai.ChatCompletionStreamChunk{
+				ID:    "test-stream",
+				Model: "gpt-4",
+				Choices: []*openai.ChatCompletionStreamChoice{
+					{
+						Delta: &openai.Message{
+							Content: openai.MessageContentString(repeatedText),
+						},
+					},
+				},
+			}
+			body := octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionStreamChunk]{})
+			body.SetParsed(chunk)
+			chunks <- &octollm.StreamChunk{Body: body}
+		}
+	}()
+
+	mockResp := &octollm.Response{
+		Stream: octollm.NewStreamChan(chunks, func() {}),
+	}
+
+	mockEngine := &mockEngine{response: mockResp}
+
+	blockMessage := "流式内容被拦截：检测到重复"
+	detector := &TextModeratorEngine{
+		ModeratorService: NewDuplicationDetectorService(
+			&DuplicationDetectorConfig{
+				MinRepeatLen:    1,
+				MaxRepeatLen:    5,
+				RepeatThreshold: 50,
+				BlockOnDetect:   true, // 启用拦截
+				BlockMessage:    blockMessage,
+			},
+			"gpt-4",
+		),
+		TextModeratorAdapter: NewUniversalAdapterWithConfig(
+			blockMessage,                // 流式拦截消息
+			blockMessage,                // 非流式拦截消息
+			"repeated_content_detected", // finish_reason
+		),
+		ModerateInput:       false,
+		ModerateOutput:      true,
+		ModerateStreamEvery: 10, // 每 10 个 chunk 检测一次
+		Next:                mockEngine,
+	}
+
+	httpReq, _ := http.NewRequestWithContext(context.Background(), "POST", "http://localhost/v1/chat/completions", nil)
+	httpReq.URL, _ = url.Parse("http://localhost/v1/chat/completions")
+	req := octollm.NewRequest(httpReq, octollm.APIFormatChatCompletions)
+	req.Body = octollm.NewBodyFromBytes([]byte{}, &octollm.JSONParser[openai.ChatCompletionRequest]{})
+	streamTrue := true
+	req.Body.SetParsed(&openai.ChatCompletionRequest{Model: "gpt-4", Stream: &streamTrue})
+
+	result, err := detector.Process(req)
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.NotNil(t, result.Stream)
+
+	// 消费所有 chunks，并验证最后收到拦截消息
+	var lastChunk *octollm.StreamChunk
+	count := 0
+	for chunk := range result.Stream.Chan() {
+		lastChunk = chunk
+		count++
+	}
+
+	// 应该在检测到重复后停止，并发送拦截消息
+	t.Logf("Received %d chunks", count)
+
+	// 验证最后一个 chunk 是拦截消息
+	if lastChunk != nil {
+		parsedChunk, err := lastChunk.Body.Parsed()
+		require.NoError(t, err)
+
+		streamChunk, ok := parsedChunk.(*openai.ChatCompletionStreamChunk)
+		require.True(t, ok)
+
+		if len(streamChunk.Choices) > 0 && streamChunk.Choices[0].Delta != nil {
+			// 验证包含拦截消息
+			content := streamChunk.Choices[0].Delta.Content.ExtractText()
+			if content != "" {
+				assert.Equal(t, blockMessage, content)
+			}
+		}
+	}
 }

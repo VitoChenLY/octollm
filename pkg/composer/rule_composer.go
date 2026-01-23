@@ -180,10 +180,11 @@ func (r *RuleComposerFileBased) wrapWithDuplicationDetector(engine octollm.Engin
 		MinRepeatLen:    config.MinRepeatLen,
 		MaxRepeatLen:    config.MaxRepeatLen,
 		RepeatThreshold: config.RepeatThreshold,
-		DetectTimeout:   time.Duration(config.TimeoutSeconds) * time.Second,
+		BlockOnDetect:   config.BlockOnDetect,
+		BlockMessage:    config.BlockMessage,
 	}
 
-	// 如果配置值为 0，使用默认值
+	// 如果配置值为 0 或空，使用默认值
 	if detectorConfig.MinRepeatLen == 0 {
 		detectorConfig.MinRepeatLen = 1
 	}
@@ -193,23 +194,29 @@ func (r *RuleComposerFileBased) wrapWithDuplicationDetector(engine octollm.Engin
 	if detectorConfig.RepeatThreshold == 0 {
 		detectorConfig.RepeatThreshold = 50
 	}
-	if detectorConfig.DetectTimeout == 0 {
-		detectorConfig.DetectTimeout = 1 * time.Second
+	if detectorConfig.BlockMessage == "" {
+		detectorConfig.BlockMessage = "Repeated content detected, please adjust and try again. "
 	}
 
 	// 使用 TextModeratorEngine 包装，复用流式处理逻辑
 	service := moderator.NewDuplicationDetectorService(detectorConfig, modelName)
 
 	// ModerateStreamEvery 控制增量检测频率
-	// 默认 10 表示每 10 个 chunks 检测一次
 	moderateStreamEvery := config.ModerateStreamEvery
 	if moderateStreamEvery <= 0 {
 		moderateStreamEvery = 50
 	}
 
+	// 创建带拦截消息的 Universal Adapter
+	adapter := moderator.NewUniversalAdapterWithConfig(
+		detectorConfig.BlockMessage, // 流式和非流式使用相同的拦截消息
+		detectorConfig.BlockMessage,
+		"repeated_content_detected", // finish_reason
+	)
+
 	return &moderator.TextModeratorEngine{
 		ModeratorService:     service,
-		TextModeratorAdapter: &moderator.OpenAIAdapter{},
+		TextModeratorAdapter: adapter,
 		ModerateInput:        false, // 不检测输入
 		ModerateOutput:       true,  // 只检测输出
 		ModerateStreamEvery:  moderateStreamEvery,

@@ -2,6 +2,7 @@ package moderator
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/infinigence/octollm/pkg/utils"
@@ -16,17 +17,20 @@ type DuplicationDetectorConfig struct {
 	MaxRepeatLen int
 	// 重复次数阈值，达到此阈值才认为是重复
 	RepeatThreshold int
-	// 检测超时时间
-	DetectTimeout time.Duration
+	// 是否拦截重复内容（默认 false，只记录日志不拦截）
+	BlockOnDetect bool
+	// 拦截时返回的消息（默认为通用提示）
+	BlockMessage string
 }
 
 // DefaultDuplicationDetectorConfig 返回默认配置
 func DefaultDuplicationDetectorConfig() *DuplicationDetectorConfig {
 	return &DuplicationDetectorConfig{
-		MinRepeatLen:    1,  // 最小 1 个字符
-		MaxRepeatLen:    5,  // 最大 5 个字符
-		RepeatThreshold: 50, // 重复 3 次以上
-		DetectTimeout:   1 * time.Second,
+		MinRepeatLen:    1,                                                          // 最小 1 个字符
+		MaxRepeatLen:    5,                                                          // 最大 5 个字符
+		RepeatThreshold: 50,                                                         // 重复 50 次以上
+		BlockOnDetect:   false,                                                      // 默认不拦截
+		BlockMessage:    "Repeated content detected, please adjust and try again. ", // 默认拦截消息
 	}
 }
 
@@ -53,63 +57,32 @@ func NewDuplicationDetectorService(
 	}
 }
 
-// Allow 检测文本重复，异步执行不阻塞响应
 func (s *DuplicationDetectorService) Allow(ctx context.Context, text []rune) error {
-	// 异步检测，不阻塞响应
-	go s.detectWithTimeout(ctx, text)
-	return nil // 永远返回 nil，不拦截响应
+	startTime := time.Now()
+
+	pattern, repeatCount, found := utils.ExtractRepeatPattern(
+		string(text),
+		s.config.MinRepeatLen,
+		s.config.MaxRepeatLen,
+		s.config.RepeatThreshold,
+	)
+
+	detectionTime := time.Since(startTime)
+
+	if found {
+		s.logRepeatDetection(ctx, string(text), pattern, repeatCount, detectionTime)
+
+		if s.config.BlockOnDetect {
+			return fmt.Errorf("Content filter: pattern '%s' repeated %d times", pattern, repeatCount)
+		}
+	}
+
+	return nil
 }
 
 // MaxRuneLen 返回最大检测文本长度
 func (s *DuplicationDetectorService) MaxRuneLen() int {
 	return 2000
-}
-
-// detectWithTimeout 带超时的异步检测
-func (s *DuplicationDetectorService) detectWithTimeout(ctx context.Context, text []rune) {
-	// 创建带超时的 context
-	detectCtx, cancel := context.WithTimeout(context.Background(), s.config.DetectTimeout)
-	defer cancel()
-
-	startTime := time.Now()
-
-	// 在新的 goroutine 中执行检测
-	resultCh := make(chan struct {
-		pattern     string
-		repeatCount int
-		found       bool
-	}, 1)
-
-	go func() {
-		pattern, repeatCount, found := utils.ExtractRepeatPattern(
-			string(text),
-			s.config.MinRepeatLen,
-			s.config.MaxRepeatLen,
-			s.config.RepeatThreshold,
-		)
-		resultCh <- struct {
-			pattern     string
-			repeatCount int
-			found       bool
-		}{pattern, repeatCount, found}
-	}()
-
-	// 等待检测完成或超时
-	select {
-	case result := <-resultCh:
-		detectionTime := time.Since(startTime)
-
-		if result.found {
-			s.logRepeatDetection(ctx, string(text), result.pattern, result.repeatCount, detectionTime)
-		}
-	case <-detectCtx.Done():
-		logrus.WithContext(ctx).WithFields(logrus.Fields{
-			"model":          s.modelName,
-			"detection_time": time.Since(startTime),
-			"content_length": len(text),
-			"timeout":        s.config.DetectTimeout,
-		}).Warn("[DuplicationDetector] Detection timeout")
-	}
 }
 
 // logRepeatDetection 记录重复检测结果

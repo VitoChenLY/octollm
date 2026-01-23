@@ -68,7 +68,7 @@ func TestExtractRepeatPattern(t *testing.T) {
 		},
 		{
 			name:            "No repetition",
-			text:            "This is a normal sentence without repetition.",
+			text:            "This is a normal sentence without repetition." + strings.Repeat("ABC", 60) + "This is a normal sentence without repetition.",
 			minRepeatLen:    1,
 			maxRepeatLen:    5,
 			repeatThreshold: 50,
@@ -193,49 +193,7 @@ func TestExtractRepeatPattern(t *testing.T) {
 	}
 }
 
-func TestComputeHash(t *testing.T) {
-	tests := []struct {
-		name  string
-		runes []rune
-		want  int64
-	}{
-		{
-			name:  "Simple ASCII",
-			runes: []rune("ABC"),
-		},
-		{
-			name:  "Unicode",
-			runes: []rune("你好"),
-		},
-		{
-			name:  "Empty",
-			runes: []rune{},
-		},
-		{
-			name:  "Single char",
-			runes: []rune{'A'},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			hash := computeHash(tt.runes)
-
-			// Hash should be non-negative and within mod range
-			if hash < 0 || hash >= hashMod {
-				t.Errorf("computeHash() = %v, want value in range [0, %v)", hash, hashMod)
-			}
-
-			// Same input should produce same hash
-			hash2 := computeHash(tt.runes)
-			if hash != hash2 {
-				t.Errorf("computeHash() is not deterministic: %v != %v", hash, hash2)
-			}
-		})
-	}
-}
-
-func TestExactMatch(t *testing.T) {
+func TestRuneSliceEqual(t *testing.T) {
 	tests := []struct {
 		name string
 		a    []rune
@@ -282,15 +240,15 @@ func TestExactMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := exactMatch(tt.a, tt.b)
+			got := runeSliceEqual(tt.a, tt.b)
 			if got != tt.want {
-				t.Errorf("exactMatch() = %v, want %v", got, tt.want)
+				t.Errorf("runeSliceEqual() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-// Benchmark tests
+// Benchmark tests，benchmark实测性能为微妙级别
 func BenchmarkExtractRepeatPattern(b *testing.B) {
 	text := strings.Repeat("ABC", 1000)
 
@@ -315,41 +273,6 @@ func BenchmarkExtractRepeatPatternNoMatch(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ExtractRepeatPattern(text, 1, 5, 50)
-	}
-}
-
-func BenchmarkComputeHash(b *testing.B) {
-	runes := []rune("This is a test string for hashing")
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		computeHash(runes)
-	}
-}
-
-// Test hash collision probability (should be very low)
-func TestHashCollisionRate(t *testing.T) {
-	patterns := []string{
-		"ABC", "XYZ", "123", "abc", "xyz",
-		"Hello", "World", "Test", "Hash", "Code",
-		"你好", "世界", "测试", "哈希", "代码",
-	}
-
-	hashMap := make(map[int64]string)
-	collisions := 0
-
-	for _, pattern := range patterns {
-		hash := computeHash([]rune(pattern))
-		if existing, exists := hashMap[hash]; exists {
-			t.Logf("Hash collision: %q and %q both hash to %v", pattern, existing, hash)
-			collisions++
-		}
-		hashMap[hash] = pattern
-	}
-
-	// We expect very few or no collisions
-	if collisions > 0 {
-		t.Logf("Total collisions: %d out of %d patterns", collisions, len(patterns))
 	}
 }
 
