@@ -11,5 +11,6 @@ models:
         min_repeat_len: 1
         max_repeat_len: 5
         repeat_threshold: 50
-        timeout_seconds: 1
+        block_on_detect: false  # 是否拦截重复内容，默认 false（只记录日志不拦截）
+        block_message: "Repeated content detected, please adjust and try again. "  # 拦截时返回的消息
         moderate_stream_every: 50
