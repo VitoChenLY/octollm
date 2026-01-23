@@ -17,7 +17,6 @@ type RepeatDetectorConfig struct {
 	BlockMessage    string
 }
 
-// DefaultRepeatDetectorConfig 返回默认配置
 func DefaultRepeatDetectorConfig() *RepeatDetectorConfig {
 	return &RepeatDetectorConfig{
 		MinRepeatLen:    1,
