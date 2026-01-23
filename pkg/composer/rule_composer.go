@@ -12,8 +12,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	loadbalancer "github.com/infinigence/octollm/pkg/engines/load-balancer"
-	"github.com/infinigence/octollm/pkg/engines/moderator"
-	"github.com/infinigence/octollm/pkg/engines/moderator/repeat_detector"
 	ruleengine "github.com/infinigence/octollm/pkg/engines/rule-engine"
 	"github.com/infinigence/octollm/pkg/errutils"
 	"github.com/infinigence/octollm/pkg/octollm"
@@ -124,10 +122,6 @@ func (r *RuleComposerFileBased) getEngine(orgName, modelName string) (octollm.En
 		}
 	}
 
-	if model.RepeatDetection != nil && model.RepeatDetection.Enabled {
-		engine = r.wrapWithRepeatDetector(engine, modelName, model.RepeatDetection)
-	}
-
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -172,52 +166,6 @@ func (r *RuleComposerFileBased) buildDefaultEngine(modelName string) (octollm.En
 	}
 
 	return lb, nil
-}
-
-func (r *RuleComposerFileBased) wrapWithRepeatDetector(engine octollm.Engine, modelName string, config *RepeatDetectionConfig) octollm.Engine {
-	detectorConfig := &repeat_detector.RepeatDetectorConfig{
-		MinRepeatLen:    config.MinRepeatLen,
-		MaxRepeatLen:    config.MaxRepeatLen,
-		RepeatThreshold: config.RepeatThreshold,
-		BlockOnDetect:   config.BlockOnDetect,
-		BlockMessage:    config.BlockMessage,
-	}
-
-	// 如果配置值为 0 或空，使用默认值
-	if detectorConfig.MinRepeatLen == 0 {
-		detectorConfig.MinRepeatLen = 1
-	}
-	if detectorConfig.MaxRepeatLen == 0 {
-		detectorConfig.MaxRepeatLen = 5
-	}
-	if detectorConfig.RepeatThreshold == 0 {
-		detectorConfig.RepeatThreshold = 50
-	}
-	if detectorConfig.BlockMessage == "" {
-		detectorConfig.BlockMessage = "Repeated content detected, please adjust and try again. "
-	}
-
-	service := repeat_detector.NewRepeatDetectorService(detectorConfig, modelName)
-
-	moderateStreamEvery := config.ModerateStreamEvery
-	if moderateStreamEvery <= 0 {
-		moderateStreamEvery = 50
-	}
-
-	adapter := moderator.NewUniversalAdapterWithConfig(
-		detectorConfig.BlockMessage, // streaming and non-streaming use the same block message
-		detectorConfig.BlockMessage,
-		"repeated_content_detected", // finish_reason
-	)
-
-	return &moderator.TextModeratorEngine{
-		ModeratorService:     service,
-		TextModeratorAdapter: adapter,
-		ModerateInput:        false, // do not moderate input
-		ModerateOutput:       true,  // only moderate output
-		ModerateStreamEvery:  moderateStreamEvery,
-		Next:                 engine,
-	}
 }
 
 func (r *RuleComposerFileBased) buildEngineByRuleList(ruleConfs RuleList, modelName string, defaultEngine octollm.Engine) (octollm.Engine, error) {
