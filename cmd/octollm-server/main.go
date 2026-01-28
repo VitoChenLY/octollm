@@ -41,10 +41,9 @@ func main() {
 	r.POST("/v1/embeddings", s.EmbeddingsHandler())
 	r.POST("/v1/rerank", s.RerankHandler())
 	// Vertex AI / Gemini API endpoints
-	// Support both Google's standard colon format and slash format:
-	// - /v1/models/{model}:generateContent (standard)
-	// - /v1/models/{model}:streamGenerateContent (standard)
-	r.POST("/v1/models/*path", s.VertexAIHandler())
+	// modelName includes the action suffix (e.g., "gemini-2.0-flash:generateContent")
+	// This matches Google's API format where the action is part of the model identifier
+	r.POST("/v1/models/:modelName", s.VertexAIHandler())
 
 	log.Println("listening :8080")
 	log.Fatal(http.ListenAndServe(":8080", r))

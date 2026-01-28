@@ -265,15 +265,10 @@ var _ octollm.Engine = (*RuleComposerEngine)(nil)
 
 func (r *RuleComposerEngine) Process(req *octollm.Request) (*octollm.Response, error) {
 	if r.Model == "" {
-		// For Vertex AI, model name is in the URL context, not in the request body
-		if req.Format == octollm.APIFormatGoogleGenerateContent {
-			if modelName, ok := req.Context().Value(octollm.ContextKeyModelName).(string); ok && modelName != "" {
-				r.Model = modelName
-			} else {
-				return nil, fmt.Errorf("model name not found in Vertex AI request context")
-			}
+		// Try to get model from context (fallback for URL-based protocols)
+		if modelName, ok := octollm.GetCtxValue[string](req.Context(), octollm.ContextKeyModelName); ok && modelName != "" {
+			r.Model = modelName
 		} else {
-			// Extract model from request body for other API formats
 			body, err := req.Body.Parsed()
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse request body: %w", err)
@@ -294,9 +289,9 @@ func (r *RuleComposerEngine) Process(req *octollm.Request) (*octollm.Response, e
 			case *anthropicSDK.MessageNewParams:
 				r.Model = string(body.Model)
 			case *vertex.GenerateContentRequest:
-				// For Vertex AI, model should already be extracted from URL
-				// This case is kept for completeness
-				return nil, fmt.Errorf("Vertex AI model should be extracted from URL context")
+				// For Vertex AI, model should already be pre-set in server.go or extracted from context.
+				// If we reach here, it means neither happened.
+				return nil, fmt.Errorf("vertex AI model should be pre-set or extracted from URL/context, but is missing")
 			default:
 				return nil, fmt.Errorf("unsupported model request type: %T", body)
 			}

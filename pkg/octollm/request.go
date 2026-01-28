@@ -21,15 +21,6 @@ const (
 	APIFormatRerank                APIFormat = "rerank"
 )
 
-// Context keys for storing request metadata
-type contextKey string
-
-const (
-	ContextKeyModelName  contextKey = "model_name"
-	ContextKeyStreamMode contextKey = "stream_mode"
-	ContextKeyURLPattern contextKey = "url_pattern"
-)
-
 // Parser parses and serializes body of requests or responses.
 type Parser interface {
 	Parse(data []byte) (any, error)
@@ -250,8 +241,17 @@ func (u *Request) Context() context.Context {
 	return u.ctx
 }
 
-func (u *Request) WithContext(ctx context.Context) {
-	u.ctx = ctx
+// WithContext returns a shallow copy of u with its context changed to ctx.
+// The provided ctx must be non-nil.
+// This method follows the same pattern as http.Request.WithContext.
+func (u *Request) WithContext(ctx context.Context) *Request {
+	if ctx == nil {
+		panic("nil context")
+	}
+	u2 := new(Request)
+	*u2 = *u
+	u2.ctx = ctx
+	return u2
 }
 
 func NewNonStreamResponse(statusCode int, header http.Header, body *UnifiedBody) *Response {

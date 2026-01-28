@@ -12,6 +12,7 @@ import (
 	"github.com/infinigence/octollm/pkg/types/openai"
 	"github.com/infinigence/octollm/pkg/types/rerank"
 	"github.com/infinigence/octollm/pkg/types/vertex"
+	"github.com/sirupsen/logrus"
 )
 
 type GeneralEndpoint struct {
@@ -27,15 +28,14 @@ type GeneralEndpointConfig struct {
 	APIKey    string
 
 	AnthropicAPIKeyAsBearer bool
-	// GoogleApiKeyAsBearer specifies the authentication method for Google Vertex AI
 
-	GoogleApiKeyAsBearer bool
+	GoogleAPIKeyAsBearer bool
 }
 
 var DefaultURLPathChatCompletions = "/v1/chat/completions"
 var DefaultURLPathCompletions = "/v1/completions"
 var DefaultURLPathClaudeMessages = "/v1/messages"
-var DefaultURLPathVertex = "/models/{model}" // Base path for Vertex AI, action will be appended based on stream mode
+var DefaultURLPathVertex = "v1/models/{model}" // Path for Vertex AI, {model} includes action (e.g., "gemini-2.0-flash:generateContent")
 var DefaultURLPathEmbeddings = "/v1/embeddings"
 var DefaultURLPathRerank = "/v1/rerank"
 
@@ -71,30 +71,12 @@ func NewGeneralEndpoint(conf GeneralEndpointConfig) *GeneralEndpoint {
 				}
 			}
 
-			// For Vertex AI, replace {model} placeholder and append action based on stream mode
-			if req.Format == octollm.APIFormatGoogleGenerateContent {
-				// Get model name from context
-				modelName, ok := req.Context().Value(octollm.ContextKeyModelName).(string)
-				if !ok || modelName == "" {
-					return "", fmt.Errorf("model name not found in Vertex AI request context")
+			if _, hasModel := octollm.GetCtxValue[string](req.Context(), octollm.ContextKeyModelName); hasModel {
+				newEndpoint, err := buildVertexEndpoint(endpoint, req)
+				if err != nil {
+					return "", fmt.Errorf("failed to build Vertex AI endpoint: %w", err)
 				}
-				
-				// Replace {model} placeholder with actual model name
-				endpoint = strings.ReplaceAll(endpoint, "{model}", modelName)
-				
-				// Get stream mode from context
-				isStream, _ := req.Context().Value(octollm.ContextKeyStreamMode).(bool)
-				
-				// Remove any existing action (for backward compatibility with old configs)
-				endpoint = strings.TrimSuffix(endpoint, ":generateContent")
-				endpoint = strings.TrimSuffix(endpoint, ":streamGenerateContent")
-				
-				// Append the correct action based on stream mode
-				if isStream {
-					endpoint = endpoint + ":streamGenerateContent"
-				} else {
-					endpoint = endpoint + ":generateContent"
-				}
+				endpoint = newEndpoint
 			}
 
 			return conf.BaseURL + endpoint, nil
@@ -140,7 +122,7 @@ func NewGeneralEndpoint(conf GeneralEndpointConfig) *GeneralEndpoint {
 			if req.Format == octollm.APIFormatClaudeMessages && !conf.AnthropicAPIKeyAsBearer {
 				// Claude with x-api-key header
 				httpReq.Header.Set("x-api-key", apiKey)
-			} else if req.Format == octollm.APIFormatGoogleGenerateContent && !conf.GoogleApiKeyAsBearer {
+			} else if req.Format == octollm.APIFormatGoogleGenerateContent && !conf.GoogleAPIKeyAsBearer {
 				// Google Vertex AI with API Key
 				httpReq.Header.Set("x-goog-api-key", apiKey)
 			} else {
@@ -154,4 +136,18 @@ func NewGeneralEndpoint(conf GeneralEndpointConfig) *GeneralEndpoint {
 	return &GeneralEndpoint{
 		HTTPEndpoint: httpEndpoint,
 	}
+}
+
+func buildVertexEndpoint(endpoint string, req *octollm.Request) (string, error) {
+	// modelNameWithAction includes the action (e.g., "gemini-2.0-flash:generateContent")
+	modelNameWithAction, ok := octollm.GetCtxValue[string](req.Context(), octollm.ContextKeyModelName)
+	if !ok || modelNameWithAction == "" {
+		return "", fmt.Errorf("model name not found in Vertex AI request context")
+	}
+
+	// Simply replace the {model} placeholder with the full model name (including action)
+	endpoint = strings.ReplaceAll(endpoint, "{model}", modelNameWithAction)
+	logrus.WithContext(req.Context()).Debugf("[buildVertexEndpoint] endpoint: %s", endpoint)
+
+	return endpoint, nil
 }

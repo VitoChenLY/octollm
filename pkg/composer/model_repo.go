@@ -58,8 +58,8 @@ func (m *ModelRepoFileBased) UpdateFromConfig(conf *ConfigFile) error {
 			if backend.AnthropicAPIKeyAsBearer != nil {
 				finalBackend.AnthropicAPIKeyAsBearer = backend.AnthropicAPIKeyAsBearer
 			}
-			if backend.GoogleApiKeyAsBearer != nil {
-				finalBackend.GoogleApiKeyAsBearer = backend.GoogleApiKeyAsBearer
+			if backend.GoogleAPIKeyAsBearer != nil {
+				finalBackend.GoogleAPIKeyAsBearer = backend.GoogleAPIKeyAsBearer
 			}
 			if backend.ExtraHeaders != nil {
 				if finalBackend.ExtraHeaders == nil {
@@ -173,8 +173,8 @@ func (m *ModelRepoFileBased) BuildEngineByBackend(b *Backend) (octollm.Engine, e
 	if b.AnthropicAPIKeyAsBearer != nil {
 		generalConf.AnthropicAPIKeyAsBearer = *b.AnthropicAPIKeyAsBearer
 	}
-	if b.GoogleApiKeyAsBearer != nil {
-		generalConf.GoogleApiKeyAsBearer = *b.GoogleApiKeyAsBearer
+	if b.GoogleAPIKeyAsBearer != nil {
+		generalConf.GoogleAPIKeyAsBearer = *b.GoogleAPIKeyAsBearer
 	}
 	if b.URLPathChat != nil {
 		if *b.URLPathChat != "" {

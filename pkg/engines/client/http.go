@@ -124,14 +124,12 @@ func (e *HTTPEndpoint) Process(req *octollm.Request) (*octollm.Response, error) 
 	ct := resp.Header.Get("Content-Type")
 	logrus.WithContext(req.Context()).Debugf("[http-endpoint] got response with status code %d, content-type %s", resp.StatusCode, ct)
 
+	// Determine if response is streaming
 	isStream := false
-	if req.Format == octollm.APIFormatGoogleGenerateContent {
-		// Vertex AI stream mode is determined by the URL path (streamGenerateContent vs generateContent)
-		if streamMode, ok := req.Context().Value(octollm.ContextKeyStreamMode).(bool); ok {
-			isStream = streamMode
-		}
+	if streamMode, ok := octollm.GetCtxValue[bool](req.Context(), octollm.ContextKeyStreamMode); ok {
+		isStream = streamMode
 	} else {
-		// Other APIs use Content-Type header to determine stream mode
+		// Fallback: use Content-Type header to determine stream mode
 		if mt, _, err := mime.ParseMediaType(ct); err == nil {
 			isStream = strings.EqualFold(mt, "text/event-stream")
 		} else {

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strings"
 	"sync"
 
 	"github.com/infinigence/octollm/pkg/errutils"
@@ -14,6 +13,13 @@ import (
 	"github.com/infinigence/octollm/pkg/types/rerank"
 	"github.com/infinigence/octollm/pkg/types/vertex"
 	"github.com/sirupsen/logrus"
+)
+
+type contextKey string
+
+const (
+	ContextKeyModelName  contextKey = "model_name"
+	ContextKeyStreamMode contextKey = "stream_mode"
 )
 
 type Server struct {
@@ -184,15 +190,15 @@ func httpJSONArrayHandler(engine Engine, format APIFormat, parser Parser) http.H
 					return
 				}
 
-			if !firstChunk {
-				w.Write([]byte(",\n"))
-			}
-			w.Write(b)
-			firstChunk = false // Mark that we've written the first chunk
-			if flusher, ok := w.(http.Flusher); ok {
-				flusher.Flush()
-			}
-			logrus.WithContext(r.Context()).Debugf("[httpHandler] Write chunk: len=%d", len(b))
+				if !firstChunk {
+					w.Write([]byte(",\n"))
+				}
+				w.Write(b)
+				firstChunk = false // Mark that we've written the first chunk
+				if flusher, ok := w.(http.Flusher); ok {
+					flusher.Flush()
+				}
+				logrus.WithContext(r.Context()).Debugf("[httpHandler] Write chunk: len=%d", len(b))
 			}
 			w.Write([]byte("]"))
 		} else if resp.Body != nil {
@@ -209,37 +215,16 @@ func httpJSONArrayHandler(engine Engine, format APIFormat, parser Parser) http.H
 }
 
 // VertexAIHandler handles Google VertexAI/Gemini generateContent requests
-func VertexAIHandler(engine Engine) http.HandlerFunc {
+// modelNameWithAction includes the action suffix (e.g., "gemini-2.0-flash:generateContent")
+// isStream indicates whether it's a streaming request (parsed from action in server.go)
+func VertexAIHandler(engine Engine, modelNameWithAction string, isStream bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		modelName, isStream := extractVertexModelFromURL(r.URL.Path)
-		if modelName != "" {
-			ctx := context.WithValue(r.Context(), ContextKeyModelName, modelName)
+		if modelNameWithAction != "" {
+			ctx := context.WithValue(r.Context(), ContextKeyModelName, modelNameWithAction)
 			ctx = context.WithValue(ctx, ContextKeyStreamMode, isStream)
 			r = r.WithContext(ctx)
 		}
 
 		httpJSONArrayHandler(engine, APIFormatGoogleGenerateContent, &JSONParser[vertex.GenerateContentRequest]{})(w, r)
 	}
-}
-
-// extracts model name and stream mode from Vertex AI URL path
-func extractVertexModelFromURL(path string) (modelName string, isStream bool) {
-	modelsIdx := strings.LastIndex(path, "/models/")
-	if modelsIdx == -1 {
-		return "", false
-	}
-
-	// Extract everything after "/models/"
-	afterModels := path[modelsIdx+8:]
-
-	colonIdx := strings.Index(afterModels, ":")
-	if colonIdx == -1 {
-		return "", false
-	}
-
-	modelName = afterModels[:colonIdx]
-	action := afterModels[colonIdx+1:]
-	isStream = strings.HasPrefix(action, "stream")
-
-	return modelName, isStream
 }
