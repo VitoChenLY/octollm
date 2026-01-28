@@ -21,6 +21,15 @@ const (
 	APIFormatRerank                APIFormat = "rerank"
 )
 
+// Context keys for storing request metadata
+type contextKey string
+
+const (
+	ContextKeyModelName  contextKey = "model_name"
+	ContextKeyStreamMode contextKey = "stream_mode"
+	ContextKeyURLPattern contextKey = "url_pattern"
+)
+
 // Parser parses and serializes body of requests or responses.
 type Parser interface {
 	Parse(data []byte) (any, error)
@@ -127,7 +136,21 @@ func (b *UnifiedBody) SetBytes(bytes []byte) {
 
 func (b *UnifiedBody) Reader() (io.ReadCloser, error) {
 	if b.reader != nil {
-		return b.reader, nil
+		// Read and cache the body bytes
+		bodyBytes, err := io.ReadAll(b.reader)
+		if err != nil {
+			// If read fails (e.g., body already closed), try to use cached bytes if available
+			if b.bytes != nil {
+				return io.NopCloser(bytes.NewReader(b.bytes)), nil
+			}
+			return nil, fmt.Errorf("read body error: %w", err)
+		}
+		// Cache the bytes and close the reader
+		b.bytes = bodyBytes
+		b.reader.Close()
+		b.reader = nil
+		// Return a new reader based on cached bytes
+		return io.NopCloser(bytes.NewReader(b.bytes)), nil
 	}
 
 	b1, err := b.Bytes()
@@ -225,6 +248,10 @@ func NewRequest(r *http.Request, format APIFormat) *Request {
 
 func (u *Request) Context() context.Context {
 	return u.ctx
+}
+
+func (u *Request) WithContext(ctx context.Context) {
+	u.ctx = ctx
 }
 
 func NewNonStreamResponse(statusCode int, header http.Header, body *UnifiedBody) *Response {

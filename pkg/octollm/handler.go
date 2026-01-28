@@ -1,16 +1,18 @@
 package octollm
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/infinigence/octollm/pkg/errutils"
 	"github.com/infinigence/octollm/pkg/types/anthropic"
 	"github.com/infinigence/octollm/pkg/types/openai"
 	"github.com/infinigence/octollm/pkg/types/rerank"
+	"github.com/infinigence/octollm/pkg/types/vertex"
 	"github.com/sirupsen/logrus"
 )
 
@@ -182,14 +184,15 @@ func httpJSONArrayHandler(engine Engine, format APIFormat, parser Parser) http.H
 					return
 				}
 
-				if !firstChunk {
-					w.Write([]byte(",\n"))
-				}
-				w.Write(b)
-				if flusher, ok := w.(http.Flusher); ok {
-					flusher.Flush()
-				}
-				logrus.WithContext(r.Context()).Debugf("[httpHandler] Write chunk: len=%d", len(b))
+			if !firstChunk {
+				w.Write([]byte(",\n"))
+			}
+			w.Write(b)
+			firstChunk = false // Mark that we've written the first chunk
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			logrus.WithContext(r.Context()).Debugf("[httpHandler] Write chunk: len=%d", len(b))
 			}
 			w.Write([]byte("]"))
 		} else if resp.Body != nil {
@@ -205,7 +208,38 @@ func httpJSONArrayHandler(engine Engine, format APIFormat, parser Parser) http.H
 	})
 }
 
-// Vertex handles Google VertexAI requests
+// VertexAIHandler handles Google VertexAI/Gemini generateContent requests
 func VertexAIHandler(engine Engine) http.HandlerFunc {
-	return httpJSONArrayHandler(engine, APIFormatGoogleGenerateContent, &JSONParser[json.RawMessage]{})
+	return func(w http.ResponseWriter, r *http.Request) {
+		modelName, isStream := extractVertexModelFromURL(r.URL.Path)
+		if modelName != "" {
+			ctx := context.WithValue(r.Context(), ContextKeyModelName, modelName)
+			ctx = context.WithValue(ctx, ContextKeyStreamMode, isStream)
+			r = r.WithContext(ctx)
+		}
+
+		httpJSONArrayHandler(engine, APIFormatGoogleGenerateContent, &JSONParser[vertex.GenerateContentRequest]{})(w, r)
+	}
+}
+
+// extracts model name and stream mode from Vertex AI URL path
+func extractVertexModelFromURL(path string) (modelName string, isStream bool) {
+	modelsIdx := strings.LastIndex(path, "/models/")
+	if modelsIdx == -1 {
+		return "", false
+	}
+
+	// Extract everything after "/models/"
+	afterModels := path[modelsIdx+8:]
+
+	colonIdx := strings.Index(afterModels, ":")
+	if colonIdx == -1 {
+		return "", false
+	}
+
+	modelName = afterModels[:colonIdx]
+	action := afterModels[colonIdx+1:]
+	isStream = strings.HasPrefix(action, "stream")
+
+	return modelName, isStream
 }

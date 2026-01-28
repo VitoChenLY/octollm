@@ -58,6 +58,9 @@ func (m *ModelRepoFileBased) UpdateFromConfig(conf *ConfigFile) error {
 			if backend.AnthropicAPIKeyAsBearer != nil {
 				finalBackend.AnthropicAPIKeyAsBearer = backend.AnthropicAPIKeyAsBearer
 			}
+			if backend.GoogleApiKeyAsBearer != nil {
+				finalBackend.GoogleApiKeyAsBearer = backend.GoogleApiKeyAsBearer
+			}
 			if backend.ExtraHeaders != nil {
 				if finalBackend.ExtraHeaders == nil {
 					finalBackend.ExtraHeaders = make(map[string]string)
@@ -170,6 +173,9 @@ func (m *ModelRepoFileBased) BuildEngineByBackend(b *Backend) (octollm.Engine, e
 	if b.AnthropicAPIKeyAsBearer != nil {
 		generalConf.AnthropicAPIKeyAsBearer = *b.AnthropicAPIKeyAsBearer
 	}
+	if b.GoogleApiKeyAsBearer != nil {
+		generalConf.GoogleApiKeyAsBearer = *b.GoogleApiKeyAsBearer
+	}
 	if b.URLPathChat != nil {
 		if *b.URLPathChat != "" {
 			generalConf.Endpoints[octollm.APIFormatChatCompletions] = *b.URLPathChat
@@ -204,6 +210,13 @@ func (m *ModelRepoFileBased) BuildEngineByBackend(b *Backend) (octollm.Engine, e
 		}
 	} else {
 		generalConf.Endpoints[octollm.APIFormatRerank] = "" // will use default
+	}
+	if b.URLPathVertex != nil {
+		if *b.URLPathVertex != "" {
+			generalConf.Endpoints[octollm.APIFormatGoogleGenerateContent] = *b.URLPathVertex
+		}
+	} else {
+		generalConf.Endpoints[octollm.APIFormatGoogleGenerateContent] = "" // will use default
 	}
 	if len(generalConf.Endpoints) == 0 {
 		return nil, fmt.Errorf("backend must specify at least one URL path (chat, messages, vertex, embedding, or rerank)")

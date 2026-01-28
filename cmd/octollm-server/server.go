@@ -87,3 +87,14 @@ func (s *Server) RerankHandler() gin.HandlerFunc {
 		handler(c.Writer, c.Request)
 	}
 }
+
+func (s *Server) VertexAIHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		orgName := c.GetString("org")
+		userName := c.GetString("user")
+
+		engine := s.ruleComposer.GetEngine(userName, orgName, "")
+		handler := octollm.VertexAIHandler(engine)
+		handler(c.Writer, c.Request)
+	}
+}
