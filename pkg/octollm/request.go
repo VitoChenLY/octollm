@@ -126,10 +126,6 @@ func (b *UnifiedBody) SetBytes(bytes []byte) {
 }
 
 func (b *UnifiedBody) Reader() (io.ReadCloser, error) {
-	if b.bytes != nil {
-		return io.NopCloser(bytes.NewReader(b.bytes)), nil
-	}
-
 	if b.reader != nil {
 		return b.reader, nil
 	}

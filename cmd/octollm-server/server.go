@@ -21,7 +21,7 @@ func NewServer(conf *composer.ConfigFile) *Server {
 	if err != nil {
 		logrus.WithError(err).Fatal("failed to update model repo from config")
 	}
-	ruleComposer := composer.NewRuleRepoFileBased(modelRepo, 5*time.Second, 10)
+	ruleComposer := composer.NewRuleRepoFileBased(modelRepo, 10*time.Second, 10)
 	err = ruleComposer.UpdateFromConfig(conf)
 	if err != nil {
 		logrus.WithError(err).Fatal("failed to update rule composer from config")
