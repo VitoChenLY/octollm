@@ -43,7 +43,7 @@ func main() {
 	// Vertex AI / Gemini API endpoints
 	// modelName includes the action suffix (e.g., "gemini-2.0-flash:generateContent")
 	// This matches Google's API format where the action is part of the model identifier
-	r.POST("/v1/models/:modelName", s.VertexAIHandler())
+	r.POST("/v1/models/:modelNameWithAction", s.VertexAIHandler())
 
 	log.Println("listening :8080")
 	log.Fatal(http.ListenAndServe(":8080", r))

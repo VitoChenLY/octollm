@@ -266,7 +266,7 @@ var _ octollm.Engine = (*RuleComposerEngine)(nil)
 func (r *RuleComposerEngine) Process(req *octollm.Request) (*octollm.Response, error) {
 	if r.Model == "" {
 		// Try to get model from context (fallback for URL-based protocols)
-		if modelName, ok := octollm.GetCtxValue[string](req.Context(), octollm.ContextKeyModelName); ok && modelName != "" {
+		if modelName, ok := octollm.GetCtxValue[string](req, octollm.ContextKeyModelName); ok && modelName != "" {
 			r.Model = modelName
 		} else {
 			body, err := req.Body.Parsed()

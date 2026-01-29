@@ -68,6 +68,10 @@ func NewWeightedRoundRobin(backends []BackendItem, retryTimeout time.Duration, r
 }
 
 func (l *WeightedRoundRobin) Process(req *octollm.Request) (*octollm.Response, error) {
+	if _, err := req.Body.Bytes(); err != nil {
+		return nil, fmt.Errorf("failed to cache request body for retries: %w", err)
+	}
+
 	start := time.Now()
 	retryCount := 0
 	for {

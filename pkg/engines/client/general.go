@@ -35,7 +35,7 @@ type GeneralEndpointConfig struct {
 var DefaultURLPathChatCompletions = "/v1/chat/completions"
 var DefaultURLPathCompletions = "/v1/completions"
 var DefaultURLPathClaudeMessages = "/v1/messages"
-var DefaultURLPathVertex = "v1/models/{model}" // Path for Vertex AI, {model} includes action (e.g., "gemini-2.0-flash:generateContent")
+var DefaultURLPathVertex = "v1/models/{modelNameWithAction}" // Path for Vertex AI, {modelNameWithAction} includes action (e.g., "gemini-2.0-flash:generateContent")
 var DefaultURLPathEmbeddings = "/v1/embeddings"
 var DefaultURLPathRerank = "/v1/rerank"
 
@@ -71,7 +71,7 @@ func NewGeneralEndpoint(conf GeneralEndpointConfig) *GeneralEndpoint {
 				}
 			}
 
-			if _, hasModel := octollm.GetCtxValue[string](req.Context(), octollm.ContextKeyModelName); hasModel {
+			if _, hasModel := octollm.GetCtxValue[string](req, octollm.ContextKeyModelName); hasModel {
 				newEndpoint, err := buildVertexEndpoint(endpoint, req)
 				if err != nil {
 					return "", fmt.Errorf("failed to build Vertex AI endpoint: %w", err)
@@ -139,14 +139,22 @@ func NewGeneralEndpoint(conf GeneralEndpointConfig) *GeneralEndpoint {
 }
 
 func buildVertexEndpoint(endpoint string, req *octollm.Request) (string, error) {
-	// modelNameWithAction includes the action (e.g., "gemini-2.0-flash:generateContent")
-	modelNameWithAction, ok := octollm.GetCtxValue[string](req.Context(), octollm.ContextKeyModelName)
-	if !ok || modelNameWithAction == "" {
+	// Get pure model name from context
+	modelName, ok := octollm.GetCtxValue[string](req, octollm.ContextKeyModelName)
+	if !ok || modelName == "" {
 		return "", fmt.Errorf("model name not found in Vertex AI request context")
 	}
 
-	// Simply replace the {model} placeholder with the full model name (including action)
-	endpoint = strings.ReplaceAll(endpoint, "{model}", modelNameWithAction)
+	// Get action from context if available
+	action, hasAction := octollm.GetCtxValue[string](req, octollm.ContextKeyAction)
+
+	// Build model name with action for endpoint replacement
+	modelNameWithAction := modelName
+	if hasAction && action != "" {
+		modelNameWithAction = modelName + ":" + action
+	}
+
+	endpoint = strings.ReplaceAll(endpoint, "{modelNameWithAction}", modelNameWithAction)
 	logrus.WithContext(req.Context()).Debugf("[buildVertexEndpoint] endpoint: %s", endpoint)
 
 	return endpoint, nil

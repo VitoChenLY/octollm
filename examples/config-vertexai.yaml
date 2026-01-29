@@ -3,6 +3,6 @@ models:
     backends:
       default:1:
         base_url: https://aiplatform.googleapis.com/v1/projects/infinimaas/locations/us-central1/publishers/google
-        url_path_vertex: /models/{model}
+        url_path_vertex: /models/{modelNameWithAction}
         # google_api_key_as_bearer: false
         api_key: xxxx

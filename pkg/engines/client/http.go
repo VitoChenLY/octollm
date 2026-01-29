@@ -126,8 +126,8 @@ func (e *HTTPEndpoint) Process(req *octollm.Request) (*octollm.Response, error) 
 
 	// Determine if response is streaming
 	isStream := false
-	if streamMode, ok := octollm.GetCtxValue[bool](req.Context(), octollm.ContextKeyStreamMode); ok {
-		isStream = streamMode
+	if action, ok := octollm.GetCtxValue[string](req, octollm.ContextKeyAction); ok {
+		isStream = octollm.IsStreamAction(action)
 	} else {
 		// Fallback: use Content-Type header to determine stream mode
 		if mt, _, err := mime.ParseMediaType(ct); err == nil {

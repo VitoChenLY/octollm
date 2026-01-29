@@ -126,29 +126,19 @@ func (b *UnifiedBody) SetBytes(bytes []byte) {
 }
 
 func (b *UnifiedBody) Reader() (io.ReadCloser, error) {
-	if b.reader != nil {
-		// Read and cache the body bytes
-		bodyBytes, err := io.ReadAll(b.reader)
-		if err != nil {
-			// If read fails (e.g., body already closed), try to use cached bytes if available
-			if b.bytes != nil {
-				return io.NopCloser(bytes.NewReader(b.bytes)), nil
-			}
-			return nil, fmt.Errorf("read body error: %w", err)
-		}
-		// Cache the bytes and close the reader
-		b.bytes = bodyBytes
-		b.reader.Close()
-		b.reader = nil
-		// Return a new reader based on cached bytes
+	if b.bytes != nil {
 		return io.NopCloser(bytes.NewReader(b.bytes)), nil
 	}
 
-	b1, err := b.Bytes()
+	if b.reader != nil {
+		return b.reader, nil
+	}
+
+	data, err := b.Bytes()
 	if err != nil {
 		return nil, fmt.Errorf("get bytes error: %w", err)
 	}
-	return io.NopCloser(bytes.NewReader(b1)), nil
+	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
 // SetParser set the parser and reset the cached state
@@ -252,6 +242,22 @@ func (u *Request) WithContext(ctx context.Context) *Request {
 	*u2 = *u
 	u2.ctx = ctx
 	return u2
+}
+
+func GetCtxValue[T any](req *Request, key any) (T, bool) {
+	var zero T
+	if req == nil || req.ctx == nil {
+		return zero, false
+	}
+	raw := req.ctx.Value(key)
+	if raw == nil {
+		return zero, false
+	}
+	v, ok := raw.(T)
+	if !ok {
+		return zero, false
+	}
+	return v, true
 }
 
 func NewNonStreamResponse(statusCode int, header http.Header, body *UnifiedBody) *Response {

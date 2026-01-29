@@ -1,7 +1,6 @@
 package main
 
 import (
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -94,20 +93,8 @@ func (s *Server) VertexAIHandler() gin.HandlerFunc {
 		orgName := c.GetString("org")
 		userName := c.GetString("user")
 
-		// Get the full modelName from Gin path parameter (includes action, e.g., "gemini-2.0-flash:generateContent")
-		modelNameWithAction := c.Param("modelName")
-
-		// Parse model name and stream mode once (avoid duplicate parsing in handler)
-		pureModelName := modelNameWithAction
-		isStream := false
-		if idx := strings.LastIndex(modelNameWithAction, ":"); idx != -1 {
-			pureModelName = modelNameWithAction[:idx]
-			action := modelNameWithAction[idx+1:]
-			isStream = strings.HasPrefix(action, "stream")
-		}
-
-		engine := s.ruleComposer.GetEngine(userName, orgName, pureModelName)
-		handler := octollm.VertexAIHandler(engine, modelNameWithAction, isStream)
+		engine := s.ruleComposer.GetEngine(userName, orgName, "")
+		handler := octollm.VertexAIHandler(engine)
 		handler(c.Writer, c.Request)
 	}
 }
