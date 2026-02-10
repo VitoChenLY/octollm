@@ -26,8 +26,6 @@ type Model struct {
 	ResponseRewrites    *engines.RewritePolicy `json:"response_rewrites" yaml:"response_rewrites"`
 	StreamChunkRewrites *engines.RewritePolicy `json:"stream_chunk_rewrites" yaml:"stream_chunk_rewrites"`
 
-	PostRequestRewrites *engines.RewritePolicy `json:"post_request_rewrites" yaml:"post_request_rewrites"`
-
 	RepeatDetection *RepeatDetectionConfig `json:"repeat_detection" yaml:"repeat_detection"`
 }
 
