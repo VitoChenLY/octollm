@@ -24,7 +24,7 @@ func NewServer(conf *composer.ConfigFile) *Server {
 		slog.Error(fmt.Sprintf("failed to update model repo from config: %v", err))
 		os.Exit(1)
 	}
-	ruleComposer := composer.NewRuleRepoFileBased(modelRepo, 10*time.Second, 10)
+	ruleComposer := composer.NewRuleRepoFileBased(modelRepo, 100*time.Second, 10)
 	err = ruleComposer.UpdateFromConfig(conf)
 	if err != nil {
 		slog.Error(fmt.Sprintf("failed to update rule composer from config: %v", err))
