@@ -48,6 +48,7 @@ type Backend struct {
 	GoogleAPIKeyAsBearer    *bool             `json:"google_api_key_as_bearer" yaml:"google_api_key_as_bearer"`
 	ExtraHeaders            map[string]string `json:"extra_headers" yaml:"extra_headers"`
 	PassThroughHeaders      []string          `json:"pass_through_headers" yaml:"pass_through_headers"`
+	AddHeadersByExpr        map[string]string `json:"add_headers_by_expr" yaml:"add_headers_by_expr"`
 	URLPathChat             *string           `json:"url_path_chat" yaml:"url_path_chat"`
 	URLPathCompletions      *string           `json:"url_path_completions" yaml:"url_path_completions"`
 	URLPathMessages         *string           `json:"url_path_messages" yaml:"url_path_messages"`

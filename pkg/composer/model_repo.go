@@ -92,6 +92,14 @@ func (m *ModelRepoFileBased) UpdateFromConfig(conf *ConfigFile) error {
 			if backend.PassThroughHeaders != nil {
 				finalBackend.PassThroughHeaders = backend.PassThroughHeaders
 			}
+			if backend.AddHeadersByExpr != nil {
+				if finalBackend.AddHeadersByExpr == nil {
+					finalBackend.AddHeadersByExpr = make(map[string]string)
+				}
+				for k, v := range backend.AddHeadersByExpr {
+					finalBackend.AddHeadersByExpr[k] = v
+				}
+			}
 			if backend.URLPathChat != nil {
 				finalBackend.URLPathChat = backend.URLPathChat
 			}
@@ -265,6 +273,23 @@ func (m *ModelRepoFileBased) BuildEngineByBackend(b *Backend) (octollm.Engine, e
 			nil)
 	}
 
+	if len(b.ExtraHeaders) > 0 || len(b.PassThroughHeaders) > 0 {
+		llmEngine = &engines.AddHeaderEngine{
+			PassThroughHeaders: b.PassThroughHeaders,
+			SetHeaders:         b.ExtraHeaders,
+			Next:               llmEngine,
+		}
+	}
+
+	// Add dynamic headers based on expressions
+	if len(b.AddHeadersByExpr) > 0 {
+		addHeaderByExprEngine, err := engines.NewAddHeaderByExprEngine(b.AddHeadersByExpr, llmEngine)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create AddHeaderByExprEngine: %w", err)
+		}
+		llmEngine = addHeaderByExprEngine
+	}
+
 	if b.ConvertToMessages != "" {
 		oriEngine := llmEngine
 		var convEngine octollm.Engine
@@ -279,14 +304,6 @@ func (m *ModelRepoFileBased) BuildEngineByBackend(b *Backend) (octollm.Engine, e
 				return convEngine.Process(req)
 			}
 			llmEngine = octollm.EngineFunc(conv)
-		}
-	}
-
-	if len(b.ExtraHeaders) > 0 || len(b.PassThroughHeaders) > 0 {
-		llmEngine = &engines.AddHeaderEngine{
-			PassThroughHeaders: b.PassThroughHeaders,
-			SetHeaders:         b.ExtraHeaders,
-			Next:               llmEngine,
 		}
 	}
 
