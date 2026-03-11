@@ -92,12 +92,12 @@ func (m *ModelRepoFileBased) UpdateFromConfig(conf *ConfigFile) error {
 			if backend.PassThroughHeaders != nil {
 				finalBackend.PassThroughHeaders = backend.PassThroughHeaders
 			}
-			if backend.AddHeadersByExpr != nil {
-				if finalBackend.AddHeadersByExpr == nil {
-					finalBackend.AddHeadersByExpr = make(map[string]string)
+			if backend.ExtraHeadersByExpr != nil {
+				if finalBackend.ExtraHeadersByExpr == nil {
+					finalBackend.ExtraHeadersByExpr = make(map[string]string)
 				}
-				for k, v := range backend.AddHeadersByExpr {
-					finalBackend.AddHeadersByExpr[k] = v
+				for k, v := range backend.ExtraHeadersByExpr {
+					finalBackend.ExtraHeadersByExpr[k] = v
 				}
 			}
 			if backend.URLPathChat != nil {
@@ -282,8 +282,8 @@ func (m *ModelRepoFileBased) BuildEngineByBackend(b *Backend) (octollm.Engine, e
 	}
 
 	// Add dynamic headers based on expressions
-	if len(b.AddHeadersByExpr) > 0 {
-		addHeaderByExprEngine, err := engines.NewAddHeaderByExprEngine(b.AddHeadersByExpr, llmEngine)
+	if len(b.ExtraHeadersByExpr) > 0 {
+		addHeaderByExprEngine, err := engines.NewAddHeaderByExprEngine(b.ExtraHeadersByExpr, llmEngine)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create AddHeaderByExprEngine: %w", err)
 		}

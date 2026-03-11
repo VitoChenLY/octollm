@@ -1,7 +1,6 @@
 package composer
 
 import (
-	// "context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -15,7 +14,6 @@ import (
 	loadbalancer "github.com/infinigence/octollm/pkg/engines/load-balancer"
 	ruleengine "github.com/infinigence/octollm/pkg/engines/rule-engine"
 	"github.com/infinigence/octollm/pkg/errutils"
-	// "github.com/infinigence/octollm/pkg/exprenv"
 	"github.com/infinigence/octollm/pkg/octollm"
 	"github.com/infinigence/octollm/pkg/types/anthropic"
 	"github.com/infinigence/octollm/pkg/types/openai"
