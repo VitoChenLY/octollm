@@ -52,8 +52,10 @@ func (e *MockEngine) Process(req *octollm.Request) (*octollm.Response, error) {
 	case 3:
 		chosen = &svc3
 	}
-	chosen.Add(1)
-	defer chosen.Add(-1)
+	if chosen != nil {
+		chosen.Add(1)
+		defer chosen.Add(-1)
+	}
 
 	va1 := svc1.Load()
 	va2 := svc2.Load()
