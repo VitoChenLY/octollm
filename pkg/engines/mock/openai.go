@@ -93,31 +93,6 @@ func (e *MockEndpoint) openAIStreamResponse(req *octollm.Request, v *openai.Chat
 		defer close(ch)
 		time.Sleep(e.TTFT)
 
-		bodyVal := &openai.ChatCompletionStreamChunk{
-			ID:      "mock-id",
-			Object:  "chat.completion.chunk",
-			Created: int(time.Now().Unix()),
-			Model:   v.Model,
-			Choices: []*openai.ChatCompletionStreamChoice{
-				{
-					Index: 0,
-					Delta: &openai.Message{
-						Role:    "assistant",
-						Content: openai.MessageContentString(fmt.Sprintf("<msg>ttft: %v, tpot: %v</msg>", e.TTFT, e.TPOT)),
-					},
-				},
-			},
-		}
-		select {
-		case ch <- &octollm.StreamChunk{
-			Body: octollm.NewBodyFromParsed(bodyVal, &octollm.JSONParser[openai.ChatCompletionStreamChunk]{}),
-		}:
-		case <-ctx.Done():
-			slog.InfoContext(ctx, fmt.Sprintf("[http-endpoint] context canceled during stream response: %v", ctx.Err()))
-			return
-		}
-		time.Sleep(e.TPOT)
-
 		for _, c := range rOutput {
 			bodyVal := &openai.ChatCompletionStreamChunk{
 				ID:      "mock-id",
@@ -144,7 +119,7 @@ func (e *MockEndpoint) openAIStreamResponse(req *octollm.Request, v *openai.Chat
 			}
 			time.Sleep(e.TPOT)
 		}
-		bodyVal = &openai.ChatCompletionStreamChunk{
+		bodyVal := &openai.ChatCompletionStreamChunk{
 			ID:      "mock-id",
 			Object:  "chat.completion.chunk",
 			Created: int(time.Now().Unix()),
@@ -153,6 +128,9 @@ func (e *MockEndpoint) openAIStreamResponse(req *octollm.Request, v *openai.Chat
 				{
 					Index:        0,
 					FinishReason: finishReason,
+					Delta: &openai.Message{
+						Content: openai.MessageContentString(""),
+					},
 				},
 			},
 			Usage: &openai.Usage{
