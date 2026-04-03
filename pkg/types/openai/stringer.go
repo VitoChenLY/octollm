@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -99,14 +100,18 @@ func toolChoiceString(tc *ToolChoice) string {
 func (r CompletionRequest) String() string {
 	w := &strings.Builder{}
 	fmt.Fprintf(w, "  Model: %q\n", r.Model)
-	if r.Prompt != nil {
-		switch v := (*r.Prompt).(type) {
-		case string:
-			fmt.Fprintf(w, "  Prompt: len(%d)\n", len(v))
-		case []string:
-			fmt.Fprintf(w, "  Prompt: strings(%d)\n", len(v))
-		default:
-			fmt.Fprintf(w, "  Prompt: %T\n", *r.Prompt)
+	if len(r.Prompt) > 0 {
+		switch r.Prompt[0] {
+		case '"':
+			var s string
+			if json.Unmarshal(r.Prompt, &s) == nil {
+				fmt.Fprintf(w, "  Prompt: len(%d)\n", len(s))
+			}
+		case '[':
+			var arr []json.RawMessage
+			if json.Unmarshal(r.Prompt, &arr) == nil {
+				fmt.Fprintf(w, "  Prompt: array(%d)\n", len(arr))
+			}
 		}
 	}
 	if r.MaxTokens != nil {

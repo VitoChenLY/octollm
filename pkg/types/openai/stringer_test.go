@@ -127,10 +127,9 @@ func TestCompletionRequest_String(t *testing.T) {
 				"prompt": ["Hello", " ", "World"],
 				"max_tokens": 100
 			}`,
-			// JSON array unmarshals into []interface{}, hits default %T branch
-			expected: `(CompletionRequest) {
+		expected: `(CompletionRequest) {
   Model: "gpt-3.5-turbo-instruct"
-  Prompt: []interface {}
+  Prompt: array(3)
   MaxTokens: 100
   Stream: false
 }`,
