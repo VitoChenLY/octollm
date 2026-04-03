@@ -1,7 +1,6 @@
 package openai
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -103,15 +102,11 @@ func (r CompletionRequest) String() string {
 	if len(r.Prompt) > 0 {
 		switch r.Prompt[0] {
 		case '"':
-			var s string
-			if json.Unmarshal(r.Prompt, &s) == nil {
-				fmt.Fprintf(w, "  Prompt: len(%d)\n", len(s))
-			}
+			fmt.Fprintf(w, "  Prompt: len(%d)\n", len(r.Prompt))
 		case '[':
-			var arr []json.RawMessage
-			if json.Unmarshal(r.Prompt, &arr) == nil {
-				fmt.Fprintf(w, "  Prompt: array(%d)\n", len(arr))
-			}
+			fmt.Fprintf(w, "  Prompt: array(%d)\n", len(r.Prompt))
+		default:
+			fmt.Fprintf(w, "  Prompt: other(%d)\n", len(r.Prompt))
 		}
 	}
 	if r.MaxTokens != nil {
