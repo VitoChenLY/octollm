@@ -1,7 +1,9 @@
 package main
 
 import (
+	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -9,14 +11,17 @@ import (
 
 	"github.com/infinigence/octollm/pkg/engines/mock"
 	ruleengine "github.com/infinigence/octollm/pkg/engines/rule-engine"
+	"github.com/infinigence/octollm/pkg/errutils"
 	"github.com/infinigence/octollm/pkg/exprenv"
 	"github.com/infinigence/octollm/pkg/octollm"
+	"github.com/infinigence/octollm/pkg/types/openai"
 )
 
 type params struct {
-	TTFT int    `json:"ttft"`
-	TPOT int    `json:"tpot"`
-	Echo string `json:"echo"`
+	TTFT   int    `json:"ttft"`
+	TPOT   int    `json:"tpot"`
+	Echo   string `json:"echo"`
+	ErrMsg string `json:"err_msg"`
 }
 
 type MockEngine struct{}
@@ -35,21 +40,56 @@ func (e *MockEngine) Process(req *octollm.Request) (*octollm.Response, error) {
 		p.TPOT = 100
 	}
 
-	var engine octollm.Engine
-	if p.Echo != "" {
-		engine = mock.NewWithFixedOutput(p.Echo, time.Duration(p.TTFT)*time.Millisecond, time.Duration(p.TPOT)*time.Millisecond)
+	var resp *octollm.Response
+	if p.ErrMsg == "" {
+
+		var engine octollm.Engine
+		if p.Echo != "" {
+			engine = mock.NewWithFixedOutput(p.Echo, time.Duration(p.TTFT)*time.Millisecond, time.Duration(p.TPOT)*time.Millisecond)
+		} else {
+			engine = mock.NewWithFixedOutput("无问芯穹的目标是打造大模型软硬件一体化最佳解决方案,创始团队由清华大学电子工程系推动成立。依托行业领先且经过验证的AI计算优化能力,打造从算法到芯片、从芯片集群到模型，再从模型到应用的三阶段中间层产品，链接上下游，共建通用人工智能时代大模型基础设施。", time.Duration(p.TTFT)*time.Millisecond, time.Duration(p.TPOT)*time.Millisecond)
+		}
+		resp, err = engine.Process(req)
+		if err != nil {
+			return nil, err
+		}
 	} else {
-		engine = mock.NewWithFixedOutput("无问芯穹的目标是打造大模型软硬件一体化最佳解决方案,创始团队由清华大学电子工程系推动成立。依托行业领先且经过验证的AI计算优化能力,打造从算法到芯片、从芯片集群到模型，再从模型到应用的三阶段中间层产品，链接上下游，共建通用人工智能时代大模型基础设施。", time.Duration(p.TTFT)*time.Millisecond, time.Duration(p.TPOT)*time.Millisecond)
-	}
-	resp, err := engine.Process(req)
-	if err != nil {
-		return nil, err
+		resp = &octollm.Response{
+			StatusCode: 400,
+			Body:       octollm.NewBodyFromBytes([]byte(p.ErrMsg), &octollm.JSONParser[openai.ChatCompletionResponse]{}),
+			Header:     http.Header{},
+		}
+		err := errutils.NewHandlerError(
+			errors.New(p.ErrMsg),
+			400,
+			p.ErrMsg,
+		)
+		return resp, err
 	}
 
 	resp.Header.Set("x-mock-octollm-ttft", fmt.Sprintf("%dms", p.TTFT))
 	resp.Header.Set("x-mock-octollm-tpot", fmt.Sprintf("%dms", p.TPOT))
 
 	return resp, nil
+}
+
+func gzipMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			gz, err := gzip.NewReader(r.Body)
+			if err != nil {
+				http.Error(w, `{"error": "invalid gzip"}`, http.StatusBadRequest)
+				return
+			}
+			defer gz.Close()
+
+			r.Body = gz
+			r.Header.Del("Content-Encoding")
+			r.Header.Del("Content-Length")
+			r.ContentLength = -1
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func main() {
@@ -64,7 +104,7 @@ func main() {
 	engine := &MockEngine{}
 
 	mux := http.NewServeMux()
-	mux.Handle("/v1/chat/completions", octollm.ChatCompletionsHandler(engine))
+	mux.Handle("/v1/chat/completions", gzipMiddleware(octollm.ChatCompletionsHandler(engine)))
 
 	slog.Info("listening :8090")
 	err := http.ListenAndServe(":8090", mux)
