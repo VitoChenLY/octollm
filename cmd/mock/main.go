@@ -18,10 +18,11 @@ import (
 )
 
 type params struct {
-	TTFT   int    `json:"ttft"`
-	TPOT   int    `json:"tpot"`
-	Echo   string `json:"echo"`
-	ErrMsg string `json:"err_msg"`
+	TTFT       int    `json:"ttft"`
+	TPOT       int    `json:"tpot"`
+	Echo       string `json:"echo"`
+	StatusCode int    `json:"err_status_code"`
+	ErrMsg     string `json:"err_msg"`
 }
 
 type MockEngine struct{}
@@ -39,6 +40,9 @@ func (e *MockEngine) Process(req *octollm.Request) (*octollm.Response, error) {
 	if p.TPOT == 0 {
 		p.TPOT = 100
 	}
+	if p.StatusCode == 0 {
+		p.StatusCode = 400
+	}
 
 	var resp *octollm.Response
 	if p.ErrMsg == "" {
@@ -55,13 +59,13 @@ func (e *MockEngine) Process(req *octollm.Request) (*octollm.Response, error) {
 		}
 	} else {
 		resp = &octollm.Response{
-			StatusCode: 400,
+			StatusCode: p.StatusCode,
 			Body:       octollm.NewBodyFromBytes([]byte(p.ErrMsg), &octollm.JSONParser[openai.ChatCompletionResponse]{}),
 			Header:     http.Header{},
 		}
 		err := errutils.NewHandlerError(
 			errors.New(p.ErrMsg),
-			400,
+			p.StatusCode,
 			p.ErrMsg,
 		)
 		return resp, err
