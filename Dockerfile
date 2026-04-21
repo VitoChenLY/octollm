@@ -10,8 +10,8 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build all binaries in cmd directory
-RUN go build -o bin/ ./cmd/...
+# Build mock server binary only
+RUN go build -o /build/bin/mock-server ./cmd/mock
 
 # Stage 2: Runtime
 FROM ubuntu:24.04
@@ -23,11 +23,11 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Copy all compiled binaries from builder
-COPY --from=builder /build/bin/* /app/
+# Copy compiled mock server binary
+COPY --from=builder /build/bin/mock-server /app/mock-server
 
-# Set octollm-server as default entrypoint
-ENTRYPOINT ["/app/octollm-server"]
+# Set mock-server as default entrypoint
+ENTRYPOINT ["/app/mock-server"]
 
 # Default command (can be overridden)
 CMD []

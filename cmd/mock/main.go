@@ -4,9 +4,11 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/infinigence/octollm/pkg/engines/mock"
@@ -99,6 +101,17 @@ func gzipMiddleware(next http.Handler) http.Handler {
 func main() {
 	slog.SetLogLoggerLevel(slog.LevelDebug)
 
+	port := flag.String("port", "", "mock server listen port (e.g. 8090)")
+	flag.Parse()
+
+	listenPort := "30000"
+	if envPort := os.Getenv("MOCK_SERVER_PORT"); envPort != "" {
+		listenPort = envPort
+	}
+	if *port != "" {
+		listenPort = *port
+	}
+
 	exprenv.RegisterDefaultExtractor("promptTextLen", &ruleengine.PromptTextLenExtractor{})
 	exprenv.RegisterDefaultExtractor("prefix20", &ruleengine.PrefixHashExtractor{Length: 20})
 	exprenv.RegisterDefaultExtractor("suffix20", &ruleengine.SuffixHashExtractor{Length: 20})
@@ -110,7 +123,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/v1/chat/completions", gzipMiddleware(octollm.ChatCompletionsHandler(engine)))
 
-	slog.Info("listening :8090")
-	err := http.ListenAndServe(":8090", mux)
+	addr := ":" + listenPort
+	slog.Info(fmt.Sprintf("listening %s", addr))
+	err := http.ListenAndServe(addr, mux)
 	slog.Error(fmt.Sprintf("server exited with error: %v", err))
 }
