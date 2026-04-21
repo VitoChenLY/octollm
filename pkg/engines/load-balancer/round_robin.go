@@ -23,6 +23,10 @@ type wrrBackend struct {
 	currentWeight int
 }
 
+func (b *wrrBackend) String() string {
+	return fmt.Sprintf("{%s w=%d cw=%d}", b.name, b.weight, b.currentWeight)
+}
+
 type WeightedRoundRobin struct {
 	mu       sync.Mutex
 	backends []*wrrBackend
@@ -95,9 +99,9 @@ func (l *WeightedRoundRobin) Process(req *octollm.Request) (*octollm.Response, e
 	for {
 		n, eng := l.GetNextEngine()
 		slog.InfoContext(req.Context(), fmt.Sprintf("[WRR load balancer] will use engine name: %s", n))
+		req.SetMetadataValue(backendName, n)
 		resp, err := eng.Process(req)
 		if err == nil {
-			req.SetMetadataValue(backendName, n)
 			return resp, nil
 		}
 		retryCount++
@@ -114,6 +118,8 @@ func (l *WeightedRoundRobin) Process(req *octollm.Request) (*octollm.Response, e
 			return resp, err
 		}
 		slog.InfoContext(req.Context(), fmt.Sprintf("[WRR load balancer] will retry, count %d, time %v", retryCount, time.Since(start)))
+		modelName, _ := octollm.GetCtxValue[string](req, octollm.ContextKeyModelName)
+		totalFailoverRequestsCounter.WithLabelValues(modelName, n).Inc()
 	}
 }
 

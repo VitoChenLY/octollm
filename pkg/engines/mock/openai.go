@@ -92,6 +92,7 @@ func (e *MockEndpoint) openAIStreamResponse(req *octollm.Request, v *openai.Chat
 	go func() {
 		defer close(ch)
 		time.Sleep(e.TTFT)
+
 		for _, c := range rOutput {
 			bodyVal := &openai.ChatCompletionStreamChunk{
 				ID:      "mock-id",
@@ -127,6 +128,9 @@ func (e *MockEndpoint) openAIStreamResponse(req *octollm.Request, v *openai.Chat
 				{
 					Index:        0,
 					FinishReason: finishReason,
+					Delta: &openai.Message{
+						Content: openai.MessageContentString(""),
+					},
 				},
 			},
 			Usage: &openai.Usage{
