@@ -45,7 +45,8 @@ func (e *MockEngine) Process(req *octollm.Request) (*octollm.Response, error) {
 	if p.StatusCode == 0 {
 		p.StatusCode = 400
 	}
-
+	p.TTFT = p.TTFT/2 + 1
+	slog.Info(fmt.Sprintf("Use half of TTFT: %dms, TPOT: %dms", p.TTFT, p.TPOT))
 	var resp *octollm.Response
 	if p.ErrMsg == "" {
 
