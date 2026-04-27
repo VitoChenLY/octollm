@@ -15,6 +15,9 @@ type MockEndpoint struct {
 	OutputString string //  the output string to return
 	TTFT         time.Duration
 	TPOT         time.Duration
+	// FirstTokenOnly, if true, only emits the first rune of OutputString (one stream chunk of content, then finish).
+	// Non-stream still returns a single rune. Useful to isolate TTFT from TPOT in benchmarks.
+	FirstTokenOnly bool
 }
 
 var _ octollm.Engine = (*MockEndpoint)(nil)
@@ -51,6 +54,9 @@ func (e *MockEndpoint) openAINonStreamResponse(req *octollm.Request, v *openai.C
 		rOutput = rOutput[:*v.MaxTokens]
 		finishReason = "length"
 	}
+	if e.FirstTokenOnly && len(rOutput) > 0 {
+		rOutput = rOutput[:1]
+	}
 	time.Sleep(e.TTFT + e.TPOT*time.Duration(len(rOutput)))
 	bodyVal := &openai.ChatCompletionResponse{
 		ID:      "mock-id",
@@ -84,6 +90,9 @@ func (e *MockEndpoint) openAIStreamResponse(req *octollm.Request, v *openai.Chat
 	if v.MaxTokens != nil && len(rOutput) > *v.MaxTokens {
 		rOutput = rOutput[:*v.MaxTokens]
 		finishReason = "length"
+	}
+	if e.FirstTokenOnly && len(rOutput) > 0 {
+		rOutput = rOutput[:1]
 	}
 
 	ch := make(chan *octollm.StreamChunk)
