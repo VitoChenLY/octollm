@@ -148,6 +148,9 @@ func httpSSEHandler(engine Engine, format APIFormat, parser Parser) http.Handler
 		}
 		w.WriteHeader(http.StatusOK)
 		if resp.Stream != nil {
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
 			defer resp.Stream.Close()
 			for chunk := range resp.Stream.Chan() {
 				b, err := chunk.Body.Bytes()
