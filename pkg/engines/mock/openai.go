@@ -18,6 +18,24 @@ type MockEndpoint struct {
 	// FirstTokenOnly, if true, only emits the first rune of OutputString (one stream chunk of content, then finish).
 	// Non-stream still returns a single rune. Useful to isolate TTFT from TPOT in benchmarks.
 	FirstTokenOnly bool
+	// DecodeMode adds cumulative token_ids (Unicode codepoints) to each stream chunk at the choice level.
+	DecodeMode bool
+}
+
+type DStreamChoice struct {
+	FinishReason string         `json:"finish_reason,omitempty"`
+	Index        int            `json:"index"`
+	Delta        *openai.Message `json:"delta"`
+	TokenIDs     []int          `json:"token_ids,omitempty"`
+}
+
+type DStreamChunk struct {
+	ID      string          `json:"id"`
+	Created int             `json:"created"`
+	Object  string          `json:"object,omitempty"`
+	Model   string          `json:"model"`
+	Choices []*DStreamChoice `json:"choices"`
+	Usage   *openai.Usage   `json:"usage,omitempty"`
 }
 
 var _ octollm.Engine = (*MockEndpoint)(nil)
@@ -39,6 +57,9 @@ func (e *MockEndpoint) Process(req *octollm.Request) (*octollm.Response, error) 
 	switch v := reqBody.(type) {
 	case *openai.ChatCompletionRequest:
 		if v.Stream != nil && *v.Stream {
+			if e.DecodeMode {
+				return e.openAIDStreamResponse(req, v)
+			}
 			return e.openAIStreamResponse(req, v)
 		}
 		return e.openAINonStreamResponse(req, v)
@@ -163,6 +184,98 @@ func (e *MockEndpoint) openAIStreamResponse(req *octollm.Request, v *openai.Chat
 		}:
 		case <-ctx.Done():
 			slog.InfoContext(ctx, fmt.Sprintf("[http-endpoint] context canceled during stream response: %v", ctx.Err()))
+			return
+		}
+	}()
+
+	streamChan := octollm.NewStreamChan(ch, cancel)
+	resp := octollm.NewStreamResponse(200, http.Header{"Content-Type": {"text/event-stream"}}, streamChan)
+	return resp, nil
+}
+
+func (e *MockEndpoint) openAIDStreamResponse(req *octollm.Request, v *openai.ChatCompletionRequest) (*octollm.Response, error) {
+	rOutput := []rune(e.OutputString)
+	finishReason := "stop"
+	if v.MaxTokens != nil && len(rOutput) > *v.MaxTokens {
+		rOutput = rOutput[:*v.MaxTokens]
+		finishReason = "length"
+	}
+
+	ch := make(chan *octollm.StreamChunk)
+	ctx, cancel := context.WithCancel(req.Context())
+
+	go func() {
+		defer close(ch)
+		time.Sleep(e.TTFT)
+
+		var cumTokenIDs []int
+		for _, c := range rOutput {
+			cumTokenIDs = append(cumTokenIDs, int(c))
+			ids := make([]int, len(cumTokenIDs))
+			copy(ids, cumTokenIDs)
+
+			bodyVal := &DStreamChunk{
+				ID:      "mock-id",
+				Object:  "chat.completion.chunk",
+				Created: int(time.Now().Unix()),
+				Model:   v.Model,
+				Choices: []*DStreamChoice{
+					{
+						Index: 0,
+						Delta: &openai.Message{
+							Role:    "assistant",
+							Content: openai.MessageContentString(string(c)),
+						},
+						TokenIDs: ids,
+					},
+				},
+			}
+			select {
+			case ch <- &octollm.StreamChunk{
+				Body: octollm.NewBodyFromParsed(bodyVal, &octollm.JSONParser[DStreamChunk]{}),
+			}:
+			case <-ctx.Done():
+				return
+			}
+			time.Sleep(e.TPOT)
+		}
+
+		finalIDs := make([]int, len(cumTokenIDs))
+		copy(finalIDs, cumTokenIDs)
+		bodyVal := &DStreamChunk{
+			ID:      "mock-id",
+			Object:  "chat.completion.chunk",
+			Created: int(time.Now().Unix()),
+			Model:   v.Model,
+			Choices: []*DStreamChoice{
+				{
+					Index:        0,
+					FinishReason: finishReason,
+					Delta: &openai.Message{
+						Content: openai.MessageContentString(""),
+					},
+					TokenIDs: finalIDs,
+				},
+			},
+			Usage: &openai.Usage{
+				PromptTokens:     1,
+				CompletionTokens: len(cumTokenIDs),
+				TotalTokens:      1 + len(cumTokenIDs),
+			},
+		}
+		select {
+		case ch <- &octollm.StreamChunk{
+			Body: octollm.NewBodyFromParsed(bodyVal, &octollm.JSONParser[DStreamChunk]{}),
+		}:
+		case <-ctx.Done():
+			return
+		}
+
+		select {
+		case ch <- &octollm.StreamChunk{
+			Body: octollm.NewBodyFromBytes([]byte("[DONE]"), &octollm.JSONParser[DStreamChunk]{}),
+		}:
+		case <-ctx.Done():
 			return
 		}
 	}()
