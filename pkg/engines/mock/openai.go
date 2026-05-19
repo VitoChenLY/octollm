@@ -22,11 +22,17 @@ type MockEndpoint struct {
 	DecodeMode bool
 }
 
+type DDelta struct {
+	Role             string                `json:"role,omitempty"`
+	Content          openai.MessageContent `json:"content,omitempty"`
+	ReasoningContent openai.MessageContent `json:"reasoning_content,omitempty"`
+	TokenIDs         []int                 `json:"token_ids,omitempty"`
+}
+
 type DStreamChoice struct {
-	FinishReason string         `json:"finish_reason,omitempty"`
-	Index        int            `json:"index"`
-	Delta        *openai.Message `json:"delta"`
-	TokenIDs     []int          `json:"token_ids,omitempty"`
+	FinishReason string   `json:"finish_reason,omitempty"`
+	Index        int      `json:"index"`
+	Delta        *DDelta  `json:"delta"`
 }
 
 type DStreamChunk struct {
@@ -222,11 +228,11 @@ func (e *MockEndpoint) openAIDStreamResponse(req *octollm.Request, v *openai.Cha
 				Choices: []*DStreamChoice{
 					{
 						Index: 0,
-						Delta: &openai.Message{
-							Role:    "assistant",
-							Content: openai.MessageContentString(string(c)),
+						Delta: &DDelta{
+							Role:     "assistant",
+							Content:  openai.MessageContentString(string(c)),
+							TokenIDs: ids,
 						},
-						TokenIDs: ids,
 					},
 				},
 			}
@@ -251,10 +257,10 @@ func (e *MockEndpoint) openAIDStreamResponse(req *octollm.Request, v *openai.Cha
 				{
 					Index:        0,
 					FinishReason: finishReason,
-					Delta: &openai.Message{
-						Content: openai.MessageContentString(""),
+					Delta: &DDelta{
+						Content:  openai.MessageContentString(""),
+						TokenIDs: finalIDs,
 					},
-					TokenIDs: finalIDs,
 				},
 			},
 			Usage: &openai.Usage{
