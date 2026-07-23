@@ -278,6 +278,7 @@ func (e *ImageURLFetchEngine) Process(req *octollm.Request) (*octollm.Response, 
 		slog.Int("cache_hits", cacheHits),
 		slog.Float64("cache_hit_ratio", cacheHitRatio),
 		slog.Int64("fetch_duration_ms", fetchDuration.Milliseconds()),
+		slog.Any("image_type_counts", summarizeImageTypeCounts(result)),
 	)
 
 	for u, r := range result {
@@ -344,6 +345,21 @@ type fetchImageResult struct {
 	decodedBytes int64
 	fromCache    bool
 	err          error
+}
+
+func summarizeImageTypeCounts(results map[string]fetchImageResult) map[string]int {
+	counts := make(map[string]int)
+	for _, r := range results {
+		if r.err != nil {
+			continue
+		}
+		imageType := strings.TrimSpace(r.mediaType)
+		if imageType == "" {
+			imageType = "unknown"
+		}
+		counts[imageType]++
+	}
+	return counts
 }
 
 func isDataURL(u string) bool {
