@@ -686,6 +686,8 @@ func (e *ChatCompletionToClaudeMessages) convertStreamResponse(req *octollm.Requ
 					switch currentBlockType {
 					case blockTypeNone:
 						needNewBlock = true
+					case blockTypeThinking:
+						needNewBlock = true
 					case blockTypeText:
 						needNewBlock = true
 					case blockTypeTool:

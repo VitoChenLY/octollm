@@ -1603,6 +1603,53 @@ func TestChatCompletionsToClaudeMessages_convertStreamResponse_WithReasoning(t *
 	testChatCompletionsToClaudeMessages_convertStreamResponse(t, openaiResp, exceptClaudeResp)
 }
 
+// Reproduces the qwen3.8-max case: reasoning (thinking) is immediately followed by a
+// tool call with no text block in between. The tool_use arguments must land in a new
+// tool_use block, not be appended to the still-open thinking block. Uses a real captured
+// upstream stream (note: tool-call chunks still carry empty reasoning_content/content,
+// and there is no trailing usage chunk).
+func TestChatCompletionsToClaudeMessages_convertStreamResponse_ThinkingThenToolCall(t *testing.T) {
+	openaiRespJSON := []string{
+		`{"model":"qwen3.8-max-preview","id":"chatcmpl-67225e04-4d88-93ec-be85-a6d4c091cfaf","created":1785757599,"object":"chat.completion.chunk","choices":[{"logprobs":null,"index":0,"delta":{"content":"","role":"assistant","reasoning_content":""},"finish_reason":null}]}`,
+		`{"model":"qwen3.8-max-preview","id":"chatcmpl-67225e04-4d88-93ec-be85-a6d4c091cfaf","choices":[{"delta":{"content":"","reasoning_content":"The"},"index":0,"finish_reason":null,"logprobs":null}],"created":1785757599,"object":"chat.completion.chunk"}`,
+		`{"model":"qwen3.8-max-preview","id":"chatcmpl-67225e04-4d88-93ec-be85-a6d4c091cfaf","choices":[{"delta":{"content":"","reasoning_content":" user is"},"index":0,"finish_reason":null,"logprobs":null}],"created":1785757599,"object":"chat.completion.chunk"}`,
+		`{"model":"qwen3.8-max-preview","id":"chatcmpl-67225e04-4d88-93ec-be85-a6d4c091cfaf","choices":[{"delta":{"content":"","reasoning_content":" asking me to call"},"index":0,"finish_reason":null,"logprobs":null}],"created":1785757599,"object":"chat.completion.chunk"}`,
+		`{"model":"qwen3.8-max-preview","id":"chatcmpl-67225e04-4d88-93ec-be85-a6d4c091cfaf","choices":[{"delta":{"content":"","reasoning_content":" the read tool with"},"index":0,"finish_reason":null,"logprobs":null}],"created":1785757599,"object":"chat.completion.chunk"}`,
+		`{"model":"qwen3.8-max-preview","id":"chatcmpl-67225e04-4d88-93ec-be85-a6d4c091cfaf","choices":[{"delta":{"content":"","reasoning_content":" the path README.md"},"index":0,"finish_reason":null,"logprobs":null}],"created":1785757599,"object":"chat.completion.chunk"}`,
+		`{"model":"qwen3.8-max-preview","id":"chatcmpl-67225e04-4d88-93ec-be85-a6d4c091cfaf","choices":[{"delta":{"content":"","reasoning_content":"."},"index":0,"finish_reason":null,"logprobs":null}],"created":1785757599,"object":"chat.completion.chunk"}`,
+		`{"model":"qwen3.8-max-preview","id":"chatcmpl-67225e04-4d88-93ec-be85-a6d4c091cfaf","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_c289210436e94c8da502c0e0","type":"function","function":{"name":"read","arguments":""}}],"content":"","reasoning_content":""},"index":0,"finish_reason":null,"logprobs":null}],"created":1785757599,"object":"chat.completion.chunk"}`,
+		`{"model":"qwen3.8-max-preview","id":"chatcmpl-67225e04-4d88-93ec-be85-a6d4c091cfaf","choices":[{"delta":{"tool_calls":[{"index":0,"id":"","type":"function","function":{"arguments":"{\"path\": "}}],"content":"","reasoning_content":""},"index":0,"finish_reason":null,"logprobs":null}],"created":1785757599,"object":"chat.completion.chunk"}`,
+		`{"model":"qwen3.8-max-preview","id":"chatcmpl-67225e04-4d88-93ec-be85-a6d4c091cfaf","choices":[{"delta":{"tool_calls":[{"index":0,"id":"","type":"function","function":{"arguments":"\"README.md"}}],"content":"","reasoning_content":""},"index":0,"finish_reason":null,"logprobs":null}],"created":1785757599,"object":"chat.completion.chunk"}`,
+		`{"model":"qwen3.8-max-preview","id":"chatcmpl-67225e04-4d88-93ec-be85-a6d4c091cfaf","choices":[{"delta":{"tool_calls":[{"index":0,"id":"","type":"function","function":{"arguments":"\""}}],"content":"","reasoning_content":""},"index":0,"finish_reason":null,"logprobs":null}],"created":1785757599,"object":"chat.completion.chunk"}`,
+		`{"model":"qwen3.8-max-preview","id":"chatcmpl-67225e04-4d88-93ec-be85-a6d4c091cfaf","choices":[{"delta":{"tool_calls":[{"index":0,"id":"","type":"function","function":{"arguments":"}"}}],"content":"","reasoning_content":""},"index":0,"finish_reason":null,"logprobs":null}],"created":1785757599,"object":"chat.completion.chunk"}`,
+		`{"model":"qwen3.8-max-preview","id":"chatcmpl-67225e04-4d88-93ec-be85-a6d4c091cfaf","choices":[{"delta":{"tool_calls":[{"function":{"arguments":""},"index":0,"id":"","type":"function"}],"content":""},"index":0,"finish_reason":null,"logprobs":null}],"created":1785757599,"object":"chat.completion.chunk"}`,
+		`{"model":"qwen3.8-max-preview","id":"chatcmpl-67225e04-4d88-93ec-be85-a6d4c091cfaf","choices":[{"delta":{},"index":0,"finish_reason":"tool_calls","logprobs":null}],"created":1785757599,"object":"chat.completion.chunk"}`,
+		`[DONE]`,
+	}
+
+	expectedClaudeRespJSON := []string{
+		`{"type":"message_start","message":{"id":"chatcmpl-67225e04-4d88-93ec-be85-a6d4c091cfaf","type":"message","role":"assistant","content":[],"model":"qwen3.8-max-preview","usage":{"input_tokens":0,"output_tokens":0}}}`,
+		`{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"The"}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" user is"}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" asking me to call"}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" the read tool with"}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" the path README.md"}}`,
+		`{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"."}}`,
+		`{"type":"content_block_stop","index":0}`,
+		`{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call_c289210436e94c8da502c0e0","name":"read","input":{}}}`,
+		`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"path\": "}}`,
+		`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"README.md"}}`,
+		`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\""}}`,
+		`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"}"}}`,
+		`{"type":"content_block_stop","index":1}`,
+		`{"type":"message_delta","delta":{"stop_reason":"tool_use"}}`,
+		`{"type":"message_stop"}`,
+	}
+
+	testChatCompletionsToClaudeMessages_convertStreamResponse(t, openaiRespJSON, expectedClaudeRespJSON)
+}
+
 func TestChatCompletionsToClaudeMessages_Close_Once_NonStream(t *testing.T) {
 	httpReq, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "/", nil)
 	req := octollm.NewRequest(httpReq, octollm.APIFormatClaudeMessages)
