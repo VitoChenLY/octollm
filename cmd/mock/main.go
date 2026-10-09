@@ -23,11 +23,17 @@ import (
 )
 
 type params struct {
-	TTFT       int    `json:"ttft"`
-	TPOT       int    `json:"tpot"`
-	Echo       string `json:"echo"`
-	StatusCode int    `json:"err_status_code"`
-	ErrMsg     string `json:"err_msg"`
+	TTFT           int    `json:"ttft"`
+	TPOT           int    `json:"tpot"`
+	Echo           string `json:"echo"`
+	StatusCode     int    `json:"err_status_code"`
+	ErrMsg         string `json:"err_msg"`
+	MockReroute    *bool  `json:"mock_reroute"`
+	PrefillReroute *struct {
+		Enable           bool    `json:"enable"`
+		MaxCacheHitRatio float64 `json:"max_cache_hit_ratio"`
+		MinComputeTokens int     `json:"min_compute_tokens"`
+	} `json:"prefill_reroute"`
 }
 
 // MockEngine is the HTTP-injected engine; scale factors apply to JSON body ttft/tpot (ms) after defaults.
@@ -36,6 +42,7 @@ type MockEngine struct {
 	TPOTScale      float64
 	FirstTokenOnly bool
 	DecodeMode     bool
+	PrefillMode    bool
 }
 
 func (e *MockEngine) Process(req *octollm.Request) (*octollm.Response, error) {
@@ -45,6 +52,23 @@ func (e *MockEngine) Process(req *octollm.Request) (*octollm.Response, error) {
 	}
 	var p params
 	json.Unmarshal(buffer, &p)
+	mockReroute := p.MockReroute != nil && *p.MockReroute
+	if p.MockReroute != nil || p.PrefillReroute != nil {
+		attrs := []any{
+			"role_p", e.PrefillMode,
+			"mock_reroute", mockReroute,
+			"mock_reroute_present", p.MockReroute != nil,
+			"prefill_reroute_present", p.PrefillReroute != nil,
+		}
+		if p.PrefillReroute != nil {
+			attrs = append(attrs,
+				"prefill_reroute.enable", p.PrefillReroute.Enable,
+				"prefill_reroute.max_cache_hit_ratio", p.PrefillReroute.MaxCacheHitRatio,
+				"prefill_reroute.min_compute_tokens", p.PrefillReroute.MinComputeTokens,
+			)
+		}
+		slog.InfoContext(req.Context(), "[mock] received reroute parameters", attrs...)
+	}
 	if p.TTFT == 0 {
 		p.TTFT = 100
 	}
@@ -77,6 +101,14 @@ func (e *MockEngine) Process(req *octollm.Request) (*octollm.Response, error) {
 		resp, err = m.Process(req)
 		if err != nil {
 			return nil, err
+		}
+		// Only role P can emit a reroute signal. A disabled policy on the retry
+		// suppresses the signal even when the original client body still asks for it.
+		if e.PrefillMode && mockReroute && resp.Stream != nil &&
+			(p.PrefillReroute == nil || p.PrefillReroute.Enable) {
+			slog.InfoContext(req.Context(), "[mock] emitting prefill reroute")
+			resp.Stream.Close()
+			resp = mockPrefillRerouteResponse(req.Context(), time.Duration(p.TTFT)*time.Millisecond)
 		}
 	} else {
 		resp = &octollm.Response{
@@ -289,6 +321,7 @@ func main() {
 			TPOTScale:      *tpotScale,
 			FirstTokenOnly: *pMode || normalizedRole == "P",
 			DecodeMode:     normalizedRole == "D",
+			PrefillMode:    normalizedRole == "P",
 		}
 		mux.Handle("/v1/chat/completions", gzipMiddleware(octollm.ChatCompletionsHandler(engine)))
 		if normalizedRole != "" {
